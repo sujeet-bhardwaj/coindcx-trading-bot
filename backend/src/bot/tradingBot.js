@@ -155,6 +155,11 @@ class TradingBot {
     if (!config.coindcx.apiKey || !config.coindcx.apiSecret) return this.liveBalances;
 
     try {
+      if (config.coindcx.apiKey && (!this.coindcxService.apiKey || this.coindcxService.apiKey !== config.coindcx.apiKey)) {
+        this.coindcxService.apiKey = config.coindcx.apiKey;
+        this.coindcxService.apiSecret = config.coindcx.apiSecret;
+      }
+
       const rawBalances = await this.coindcxService.getBalances();
       if (Array.isArray(rawBalances)) {
         const parsed = { USDT: 0, INR: 0, BTC: 0, ETH: 0 };
@@ -1788,6 +1793,14 @@ class TradingBot {
       console.warn('🚨 REAL CAPITAL AT RISK! ENSURE RISK LIMITS ARE STRICTLY SET. 🚨');
       console.warn('================================================================');
       this.log('🚨 [ALERT] Switched to LIVE_TRADING mode. Real orders may be placed.');
+
+      // Synchronously fetch and update live CoinDCX balances
+      try {
+        await this.fetchLiveBalances();
+      } catch (err) {
+        console.warn('[BOT] Live balance fetch on switch warning:', err.message);
+      }
+
       this._notifyStateChange('mode_change', { mode: 'LIVE_TRADING', warning: 'REAL FUNDS AT RISK' });
 
       return {

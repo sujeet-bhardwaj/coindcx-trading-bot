@@ -603,29 +603,29 @@ export default function MetricsCards({
           <Wallet size={16} style={{ color: botStatus?.mode === 'LIVE_TRADING' ? '#4ade80' : 'var(--accent-cyan)' }} />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>USDT:</span>
-            <span className="font-mono" style={{ fontSize: '1.25rem', fontWeight: '700', color: '#fff' }}>
-              ${Number(balances.USDT || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>INR:</span>
-            <span className="font-mono" style={{ fontSize: '1.05rem', fontWeight: '600', color: botStatus?.mode === 'LIVE_TRADING' ? '#4ade80' : 'var(--text-muted)' }}>
-              ₹{Number(balances.INR || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>INR Balance:</span>
+            <span className="font-mono" style={{ fontSize: '1.25rem', fontWeight: '700', color: botStatus?.mode === 'LIVE_TRADING' ? '#4ade80' : '#fff' }}>
+              ₹{Number(balances.INR || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Crypto (BTC):</span>
-            <span className="font-mono" style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)' }}>
+            <span className="font-mono" style={{ fontSize: '1.05rem', fontWeight: '600', color: 'var(--accent-cyan)' }}>
               {Number(balances.BTC || 0).toFixed(6)} BTC
             </span>
           </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>USDT:</span>
+            <span className="font-mono" style={{ fontSize: '0.95rem', fontWeight: '600', color: 'var(--text-dim)' }}>
+              ${Number(balances.USDT || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
           {botStatus?.mode === 'LIVE_TRADING' && (
-            <div style={{ fontSize: '0.7rem', color: '#4ade80', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '500' }}>
+            <div style={{ fontSize: '0.72rem', color: '#4ade80', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', background: 'rgba(74, 222, 128, 0.08)', padding: '4px 8px', borderRadius: '6px' }}>
               <span className="pulse-dot pulse-green" style={{ width: '6px', height: '6px' }}></span>
-              <span>Live Synced with CoinDCX Wallet</span>
+              <span>Live Synced: ₹{Number(balances.INR || 0).toFixed(2)} + {Number(balances.BTC || 0).toFixed(6)} BTC</span>
             </div>
           )}
         </div>
