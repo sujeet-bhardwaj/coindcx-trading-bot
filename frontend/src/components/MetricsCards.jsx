@@ -40,7 +40,8 @@ export default function MetricsCards({
 
   const isRunning = botStatus?.isRunning;
   const is3M = botStatus?.strategy === 'SCALPER_3M' || botStatus?.scalper3M?.isActive;
-  const cycleDurationSec = is3M ? 180 : 900;
+  const is4H = botStatus?.strategy === 'TREND_4H' || botStatus?.strategy === 'SWING_4H' || botStatus?.scalper4H?.isActive;
+  const cycleDurationSec = is4H ? 14400 : (is3M ? 180 : 900);
 
   // Cycle Timing: strictly runs when bot is started, starts from 1s, resets to 1s on sell
   let cycleElapsedSec = 0;
@@ -54,13 +55,19 @@ export default function MetricsCards({
   }
 
   const cycleProgressPercent = isRunning ? Math.min(100, Math.max(0, (cycleElapsedSec / cycleDurationSec) * 100)) : 0;
-  const elMins = Math.floor(cycleElapsedSec / 60);
+  const elHours = Math.floor(cycleElapsedSec / 3600);
+  const elMins = Math.floor((cycleElapsedSec % 3600) / 60);
   const elSecs = cycleElapsedSec % 60;
-  const cycleElapsedFormatted = `${String(elMins).padStart(2, '0')}:${String(elSecs).padStart(2, '0')}`;
+  const cycleElapsedFormatted = is4H
+    ? `${String(elHours).padStart(2, '0')}:${String(elMins).padStart(2, '0')}:${String(elSecs).padStart(2, '0')}`
+    : `${String(elMins).padStart(2, '0')}:${String(elSecs).padStart(2, '0')}`;
 
-  const remMins = Math.floor(cycleRemainingSec / 60);
+  const remHours = Math.floor(cycleRemainingSec / 3600);
+  const remMins = Math.floor((cycleRemainingSec % 3600) / 60);
   const remSecs = cycleRemainingSec % 60;
-  const cycleRemainingFormatted = `${String(remMins).padStart(2, '0')}:${String(remSecs).padStart(2, '0')}`;
+  const cycleRemainingFormatted = is4H
+    ? `${String(remHours).padStart(2, '0')}:${String(remMins).padStart(2, '0')}:${String(remSecs).padStart(2, '0')}`
+    : `${String(remMins).padStart(2, '0')}:${String(remSecs).padStart(2, '0')}`;
 
   // Active trade duration / hold timer
   const posHoldSeconds = activePosition?.createdAt
@@ -197,11 +204,13 @@ export default function MetricsCards({
                 📈
               </div>
               <div>
-                <h3 style={{ fontSize: '0.95rem', fontWeight: '800', margin: 0, color: '#a7f3d0' }}>
-                  15-Minute Cycle Monitor (EMA 9/21 + RSI Momentum)
+                <h3 style={{ fontSize: '0.95rem', fontWeight: '800', margin: 0, color: is4H ? '#c084fc' : '#a7f3d0' }}>
+                  {is4H ? '4-Hour Macro Trend Monitor (EMA 20/50 + RSI 14)' : '15-Minute Cycle Monitor (EMA 9/21 + RSI Momentum)'}
                 </h3>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', margin: 0 }}>
-                  Dynamic Trailing Profit (+0.60%) • Strict Stop-Loss (-0.80%) • 15-Min Auto-Cycle • Resets on Sell
+                  {is4H
+                    ? 'Macro 4H Swing Trend • Dynamic Profit Ladder (1.8%–15%) • Strict Stop-Loss (-0.75%) • Resets on Sell'
+                    : 'Dynamic Trailing Profit (+0.60%) • Strict Stop-Loss (-0.80%) • 15-Min Auto-Cycle • Resets on Sell'}
                 </p>
               </div>
             </div>
@@ -209,17 +218,17 @@ export default function MetricsCards({
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block' }}>
-                  {!isRunning ? 'Cycle Status' : activePosition ? 'Trade Duration / Cycle' : '15-Min Cycle Timer'}
+                  {!isRunning ? 'Cycle Status' : activePosition ? 'Trade Duration / Cycle' : (is4H ? '4-Hour Cycle Timer' : '15-Min Cycle Timer')}
                 </span>
                 <span
                   style={{
                     fontSize: '1.25rem',
                     fontWeight: '800',
-                    color: !isRunning ? '#9ca3af' : activePosition ? '#34d399' : '#67e8f9',
+                    color: !isRunning ? '#9ca3af' : activePosition ? '#34d399' : (is4H ? '#c084fc' : '#67e8f9'),
                     fontFamily: 'var(--font-mono)',
                   }}
                 >
-                  {!isRunning ? '⏸️ Stopped' : `⏱️ ${cycleElapsedFormatted} / 15:00`}
+                  {!isRunning ? '⏸️ Stopped' : `⏱️ ${cycleElapsedFormatted} / ${is4H ? '04:00:00' : '15:00'}`}
                 </span>
                 {isRunning && (
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', display: 'block', marginTop: '2px' }}>
@@ -230,19 +239,19 @@ export default function MetricsCards({
             </div>
           </div>
 
-          {/* 15-Minute Cycle Progress Bar */}
+          {/* Cycle Progress Bar */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-dim)', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
               <span>
                 {!isRunning ? (
-                  <span style={{ color: '#9ca3af' }}>⏸️ Bot is Stopped • Press <strong>START BOT</strong> above to begin 15-minute cycle from 1 sec</span>
+                  <span style={{ color: '#9ca3af' }}>⏸️ Bot is Stopped • Press <strong>START BOT</strong> above to begin {is4H ? '4-hour' : '15-minute'} cycle from 1 sec</span>
                 ) : activePosition ? (
                   <span>
                     <strong style={{ color: '#34d399' }}>🟢 Active Trade:</strong> {activePosition.quantity} {selectedPair} @ {currencySymbol}{Number(activePosition.entryPrice).toLocaleString()} | P&L: <strong style={{ color: liveUnrealizedPnLPercent >= 0 ? '#4ade80' : '#f87171' }}>{liveUnrealizedPnLPercent >= 0 ? '+' : ''}{liveUnrealizedPnLPercent.toFixed(2)}%</strong> (Held: {posHoldFormatted})
                   </span>
                 ) : (
                   <span>
-                    <strong style={{ color: '#67e8f9' }}>🔍 15-Minute Cycle Running:</strong> {elMins}m {elSecs}s / 15m ({cycleProgressPercent.toFixed(0)}%) • Scanning for Buy Signals
+                    <strong style={{ color: is4H ? '#c084fc' : '#67e8f9' }}>{is4H ? '🔍 4-Hour Trend Cycle Running:' : '🔍 15-Minute Cycle Running:'}</strong> {is4H ? `${elHours}h ${elMins}m ${elSecs}s / 4h` : `${elMins}m ${elSecs}s / 15m`} ({cycleProgressPercent.toFixed(0)}%) • Scanning for Buy Signals
                   </span>
                 )}
               </span>
