@@ -25,29 +25,45 @@ const botSettingsSchema = new mongoose.Schema(
     },
     leverage: {
       type: Number,
-      default: 1,
+      default: 5,
       min: 1,
       max: 100,
     },
-    stopLossPercent: {
+    maxLossPercent: {
       type: Number,
-      default: 2.0,
+      default: 0.75,
     },
-    takeProfitPercent: {
-      type: Number,
-      default: 4.0,
+    profitLockLevels: {
+      type: String,
+      default: '1.8,3,5,7,9,11,13,15',
     },
-    trailingActivationPercent: {
+    profitLockStepAfterLast: {
       type: Number,
-      default: 3.5,
+      default: 1,
     },
-    trailingGivebackPercent: {
+    lockBufferPercent: {
       type: Number,
-      default: 0.3,
+      default: 0,
     },
     breakevenTriggerPercent: {
       type: Number,
-      default: 1.0,
+      default: 0,
+    },
+    stopLossPercent: {
+      type: Number,
+      default: 0.75,
+    },
+    takeProfitPercent: {
+      type: Number,
+      default: 0,
+    },
+    trailingActivationPercent: {
+      type: Number,
+      default: 0.5,
+    },
+    trailingGivebackPercent: {
+      type: Number,
+      default: 0,
     },
     maxDailyLoss: {
       type: Number,

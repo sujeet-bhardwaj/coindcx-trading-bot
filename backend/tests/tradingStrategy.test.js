@@ -83,32 +83,32 @@ describe('TradingStrategy Engine - Technical Indicators & Signals', () => {
     expect(signal.reason).toContain('Stop-Loss');
   });
 
-  it('should trigger SELL signal when Take-Profit threshold is reached', () => {
+  it('should trigger SELL signal when price falls below locked profit level', () => {
     const strategy = new EMARSIStrategy();
     const position = {
       pair: 'BTCUSDT',
       side: 'buy',
       entryPrice: 80000,
-      stopLossPrice: 78400,
-      takeProfitPrice: 83200,
+      peakProfitPercent: 1.2,
+      lockedProfitPercent: 1.0,
     };
 
     const dummyCandles = new Array(60).fill({
-      open: 83500,
-      high: 84000,
-      low: 83000,
-      close: 83500,
+      open: 80700,
+      high: 80800,
+      low: 80600,
+      close: 80700,
       volume: 10,
     });
 
     const signal = strategy.generateSignal({
       candles: dummyCandles,
-      currentPrice: 83500, // Reached above 83200
+      currentPrice: 80700, // +0.875%, dropped below 1.0% lock
       position,
     });
 
     expect(signal.signal).toBe('SELL');
-    expect(signal.reason).toContain('Take-Profit');
+    expect(signal.reason).toContain('Profit-Lock');
   });
 
   it('should support swapping and retrieving modular strategies from registry', () => {
@@ -116,5 +116,76 @@ describe('TradingStrategy Engine - Technical Indicators & Signals', () => {
     expect(strategy).toBeDefined();
     expect(strategy.name).toBe('EMA_RSI');
     expect(strategyRegistry.list()).toContain('EMA_RSI');
+  });
+
+  it('should generate SHORT signal on Bearish Crossover when allowShort is true and RSI is 30-50', () => {
+    const strategy = new EMARSIStrategy({
+      fastPeriod: 5,
+      slowPeriod: 10,
+      rsiPeriod: 5,
+      rsiOversold: 30,
+      rsiOverbought: 70,
+      allowShort: true,
+    });
+
+    // Alternating prices with downward slope ensuring RSI is in 30-50 range
+    const prices = [
+      100, 101, 100, 101, 100, 101, 100, 99.5, 100, 99.2, 99.8, 99.0, 99.5, 98.8, 99.2, 98.5, 98.9, 98.2, 98.6, 98.0, 98.4, 97.9,
+    ];
+    const candles = prices.map((price, i) => ({
+      open: price + 0.1,
+      high: price + 0.2,
+      low: price - 0.2,
+      close: price,
+      volume: 100,
+      time: 1600000000000 + i * 60000,
+    }));
+
+    const signal = strategy.generateSignal({
+      candles,
+      currentPrice: 97.9,
+      position: null,
+    });
+
+    expect(signal.signal).toBe('SHORT');
+    expect(signal.reason).toContain('Bearish');
+    expect(signal.indicators.rsi).toBeLessThanOrEqual(50);
+    expect(signal.indicators.rsi).toBeGreaterThanOrEqual(30);
+  });
+
+  it('should trigger SELL for long position when technical indicator exit is breached (EMA bearish or RSI < 45)', () => {
+    const strategy = new EMARSIStrategy({
+      fastPeriod: 5,
+      slowPeriod: 10,
+      rsiPeriod: 5,
+    });
+
+    const position = {
+      pair: 'BTCUSDT',
+      side: 'buy',
+      entryPrice: 80,
+    };
+
+    // Bearish down-trend
+    const prices = [
+      90, 90, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 72, 71, 70,
+    ];
+    const candles = prices.map((price, i) => ({
+      open: price + 0.2,
+      high: price + 0.5,
+      low: price - 0.5,
+      close: price,
+      volume: 100,
+      time: 1600000000000 + i * 60000,
+    }));
+
+    const signal = strategy.generateSignal({
+      candles,
+      currentPrice: 80.2, // Still slightly positive price, but indicator broke down
+      position,
+    });
+
+    expect(signal.signal).toBe('SELL');
+    expect(signal.reason).toMatch(/EMA_EXIT|RSI_EXIT/);
   });
 });

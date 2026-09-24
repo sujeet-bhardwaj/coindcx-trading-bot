@@ -86,4 +86,49 @@ describe('PaperTradingEngine - Virtual Execution & Accounting', () => {
       })
     ).rejects.toThrow('No matching open position');
   });
+
+  it('should execute SHORT order and calculate profitable cover with fees and slippage (Rule #44)', async () => {
+    const shortResult = await engine.executeShort({
+      pair: 'BTCUSDT',
+      amountQuote: 2000,
+      currentPrice: 80000,
+      stopLossPercent: 1.5,
+      takeProfitPercent: 3.0,
+      leverage: 2,
+    });
+
+    expect(shortResult.order.side).toBe('short');
+    expect(shortResult.position.side).toBe('short');
+    expect(engine.getBalances().USDT).toBe(8000); // 10000 - 2000 margin
+
+    // Price drops to 78000 -> profitable for short
+    const coverResult = await engine.executeSell({
+      pair: 'BTCUSDT',
+      positionId: shortResult.position.positionId,
+      currentPrice: 78000,
+      reason: 'PROFIT_LOCK_TRIGGERED',
+    });
+
+    expect(coverResult.trade.side).toBe('short_then_cover');
+    expect(coverResult.trade.profit).toBeGreaterThan(0);
+    expect(coverResult.trade.fee).toBeGreaterThan(0);
+    expect(engine.getBalances().USDT).toBeGreaterThan(10000); // Initial 10000 + profit
+    expect(engine.getPositionsWithPnL()).toHaveLength(0);
+  });
+
+  it('should calculate live unrealized P&L correctly for SHORT positions', async () => {
+    await engine.executeShort({
+      pair: 'BTCUSDT',
+      amountQuote: 1000,
+      currentPrice: 80000,
+    });
+
+    // Market price drops to 78000 -> Short is in profit
+    const profitableCheck = engine.getPositionsWithPnL({ BTCUSDT: 78000 });
+    expect(profitableCheck[0].unrealizedPnL).toBeGreaterThan(0);
+
+    // Market price rises to 82000 -> Short is in loss
+    const lossCheck = engine.getPositionsWithPnL({ BTCUSDT: 82000 });
+    expect(lossCheck[0].unrealizedPnL).toBeLessThan(0);
+  });
 });

@@ -6,6 +6,12 @@ class MockCoinDCXService {
   constructor() {
     this.createOrderCalls = [];
   }
+  hasApiKey() {
+    return this._hasKey !== undefined ? this._hasKey : true;
+  }
+  hasApiSecret() {
+    return this._hasSecret !== undefined ? this._hasSecret : true;
+  }
   async getTicker(pair) {
     return { market: pair, last_price: '81000.00' };
   }
@@ -36,6 +42,7 @@ describe('TradingBot Lifecycle & Safety Isolation', () => {
 
   afterEach(async () => {
     await tradingBot.stop();
+    await tradingBot.switchTradingMode({ mode: 'PAPER_TRADING' });
   });
 
   it('should transition from STOPPED to RUNNING on start()', async () => {
@@ -78,5 +85,39 @@ describe('TradingBot Lifecycle & Safety Isolation', () => {
 
   it('should guarantee that mock CoinDCX service placed zero real orders during PAPER_TRADING', () => {
     expect(mockCoinDCX.createOrderCalls).toHaveLength(0);
+  });
+
+  describe('Rule #20: Live Safety Confirmation Gate', () => {
+    it('rejects switch to LIVE_TRADING without explicit confirmLiveRisk', async () => {
+      await expect(
+        tradingBot.switchTradingMode({ mode: 'LIVE_TRADING', confirmLiveRisk: false })
+      ).rejects.toThrow('SAFETY GATE REJECTION: Switching to LIVE_TRADING requires explicit confirmation');
+    });
+
+    it('rejects switch to LIVE_TRADING when emergency stop is active', async () => {
+      await tradingBot.emergencyStop();
+      await expect(
+        tradingBot.switchTradingMode({ mode: 'LIVE_TRADING', confirmLiveRisk: true })
+      ).rejects.toThrow('Cannot switch to LIVE_TRADING while Emergency Stop is active');
+    });
+
+    it('rejects switch to LIVE_TRADING when CoinDCX credentials are missing', async () => {
+      mockCoinDCX._hasKey = false;
+      await expect(
+        tradingBot.switchTradingMode({ mode: 'LIVE_TRADING', confirmLiveRisk: true })
+      ).rejects.toThrow('CoinDCX API Key or API Secret is missing');
+    });
+
+    it('successfully switches to LIVE_TRADING when all 4 safety conditions pass', async () => {
+      const res = await tradingBot.switchTradingMode({ mode: 'LIVE_TRADING', confirmLiveRisk: true });
+      expect(res.success).toBe(true);
+      expect(res.mode).toBe('LIVE_TRADING');
+    });
+
+    it('safely reverts back to PAPER_TRADING without restrictions', async () => {
+      const res = await tradingBot.switchTradingMode({ mode: 'PAPER_TRADING' });
+      expect(res.success).toBe(true);
+      expect(res.mode).toBe('PAPER_TRADING');
+    });
   });
 });

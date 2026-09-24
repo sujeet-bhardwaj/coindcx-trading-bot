@@ -215,7 +215,38 @@ class MarketService {
       }
     }
 
-    const nativeIntervals = ['1m', '15m', '1h', '1d'];
+    // If 4h is requested, attempt native or aggregate 1h candles into 4h
+    if (interval === '4h') {
+      try {
+        const native4h = await this.coindcx.getCandles({
+          pair: exchangePair,
+          interval: '4h',
+          limit,
+        });
+        if (Array.isArray(native4h) && native4h.length >= 10) {
+          return native4h;
+        }
+      } catch (nativeErr) {
+        // Fall back to aggregating 1h candles
+      }
+
+      const rawLimit = Math.min(Math.max(limit * 4, 60), 500);
+      try {
+        const oneHourCandles = await this.coindcx.getCandles({
+          pair: exchangePair,
+          interval: '1h',
+          limit: rawLimit,
+        });
+        const aggregated = this.aggregateCandles(oneHourCandles, 240);
+        if (aggregated.length > 0) {
+          return aggregated.slice(-limit);
+        }
+      } catch (err) {
+        console.warn(`4h candle aggregation warning: ${err.message}. Falling back to 1h.`);
+      }
+    }
+
+    const nativeIntervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '1d'];
     const safeInterval = nativeIntervals.includes(interval) ? interval : '1m';
 
     return await this.coindcx.getCandles({ pair: exchangePair, interval: safeInterval, limit });

@@ -9,6 +9,7 @@ class PaperTradingEngine {
     this.initialBalanceINR = options.initialBalanceINR || config.paper.initialBalanceINR;
     this.feePercent = options.feePercent !== undefined ? options.feePercent : (config.paper.feePercent || 0.1);
     this.slippagePercent = options.slippagePercent !== undefined ? options.slippagePercent : 0.02;
+    this.simulateLatencyMs = options.simulateLatencyMs !== undefined ? options.simulateLatencyMs : 0;
 
     // Virtual Wallets
     this.balances = {
@@ -128,6 +129,10 @@ class PaperTradingEngine {
       throw new Error(`Insufficient simulated ${quote} balance: Available ${availableQuote.toFixed(2)}, requested margin ${amountQuote}`);
     }
 
+    if (this.simulateLatencyMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.simulateLatencyMs));
+    }
+
     // Apply realistic slippage to buy price (slightly higher execution)
     const executionPrice = currentPrice * (1 + this.slippagePercent / 100);
     const notionalValue = amountQuote * lev;
@@ -185,6 +190,7 @@ class PaperTradingEngine {
       takeProfitPercent,
       effectiveStopLossPrice: stopLossPrice,
       peakProfitPercent: 0,
+      lockedProfitPercent: 0,
       trailingActive: false,
       strategy,
       entryFee: fee,
@@ -202,12 +208,112 @@ class PaperTradingEngine {
   }
 
   /**
-   * Update trailing stop-loss / take-profit state for an active position
+   * Execute simulated SHORT order (Futures / Derivatives)
+   */
+  async executeShort({
+    pair,
+    amountQuote,
+    currentPrice,
+    stopLossPercent = config.stopLossPercent,
+    takeProfitPercent = config.takeProfitPercent,
+    strategy = 'EMA_RSI',
+    leverage = 1,
+  }) {
+    this._checkDailyReset();
+
+    const lev = Math.max(1, parseInt(leverage, 10) || 1);
+    const { quote } = this.getQuoteAndBase(pair);
+    const availableQuote = this.balances[quote] || 0;
+
+    if (amountQuote > availableQuote) {
+      throw new Error(`Insufficient simulated ${quote} balance: Available ${availableQuote.toFixed(2)}, requested margin ${amountQuote}`);
+    }
+
+    if (this.simulateLatencyMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.simulateLatencyMs));
+    }
+
+    // Apply realistic slippage to short price (slightly lower execution on short entry)
+    const executionPrice = currentPrice * (1 - this.slippagePercent / 100);
+    const notionalValue = amountQuote * lev;
+    const fee = (notionalValue * this.feePercent) / 100;
+    const netNotional = notionalValue - fee;
+    const quantity = netNotional / executionPrice;
+
+    // Deduct margin from quote currency
+    this.balances[quote] -= amountQuote;
+    this._syncBalances();
+
+    // Calculate Stop Loss & Take Profit thresholds for SHORT
+    const stopLossPrice = executionPrice * (1 + stopLossPercent / 100);
+    const takeProfitPrice = executionPrice * (1 - takeProfitPercent / 100);
+
+    // Calculate Liquidation Price for leveraged positions with 5% maintenance buffer
+    const liquidationPrice = lev > 1 ? executionPrice * (1 + (0.95 / lev)) : null;
+
+    const orderId = `PAPER_ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const positionId = `POS_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+    const order = {
+      orderId,
+      exchangeOrderId: orderId,
+      pair,
+      side: 'short',
+      type: 'market_order',
+      price: executionPrice,
+      quantity,
+      costQuote: amountQuote,
+      margin: amountQuote,
+      notionalValue,
+      leverage: lev,
+      fee,
+      status: 'filled',
+      mode: 'PAPER_TRADING',
+      timestamp: new Date(),
+    };
+    this.orders.push(order);
+
+    const position = {
+      positionId,
+      pair,
+      side: 'short',
+      entryPrice: executionPrice,
+      quantity,
+      margin: amountQuote,
+      leverage: lev,
+      notionalValue,
+      liquidationPrice,
+      stopLossPrice,
+      takeProfitPrice,
+      stopLossPercent,
+      takeProfitPercent,
+      effectiveStopLossPrice: stopLossPrice,
+      peakProfitPercent: 0,
+      lockedProfitPercent: 0,
+      trailingActive: false,
+      strategy,
+      entryFee: fee,
+      createdAt: new Date(),
+    };
+    this.positions.push(position);
+
+    await this.saveState();
+
+    return {
+      order,
+      position,
+      balances: { ...this.balances },
+    };
+  }
+
+  /**
+   * Update trailing stop-loss / profit-lock state for an active position
    */
   async updatePositionTrailing(positionId, updates = {}) {
     const pos = this.positions.find((p) => p.positionId === positionId);
     if (pos) {
       if (updates.peakProfitPercent !== undefined) pos.peakProfitPercent = updates.peakProfitPercent;
+      if (updates.lockedProfitPercent !== undefined) pos.lockedProfitPercent = updates.lockedProfitPercent;
       if (updates.trailingActive !== undefined) pos.trailingActive = updates.trailingActive;
       if (updates.effectiveStopLossPrice !== undefined) pos.effectiveStopLossPrice = updates.effectiveStopLossPrice;
       await this.saveState();
@@ -238,39 +344,57 @@ class PaperTradingEngine {
       targetPosIndex = this.positions.findIndex((p) => p.pair === pair);
     }
 
+    const position = targetPosIndex !== -1 ? this.positions[targetPosIndex] : null;
+    const isShort = position && position.side === 'short';
+
     if (targetPosIndex === -1 && (!quantity || quantity > (this.balances[base] || 0))) {
       throw new Error(`No matching open position or insufficient ${base} balance to sell`);
     }
 
-    const position = targetPosIndex !== -1 ? this.positions[targetPosIndex] : null;
     const sellQty = position ? position.quantity : quantity;
     const entryPrice = position ? position.entryPrice : currentPrice;
     const entryFee = position ? position.entryFee : 0;
     const lev = position ? (position.leverage || 1) : 1;
     const margin = position ? (position.margin || (position.entryPrice * sellQty / lev)) : (entryPrice * sellQty);
 
-    // Apply realistic slippage to sell price (slightly lower execution)
-    const executionPrice = currentPrice * (1 - this.slippagePercent / 100);
+    if (this.simulateLatencyMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.simulateLatencyMs));
+    }
+
+    // Apply realistic slippage:
+    // Long sell: slightly lower execution
+    // Short cover: slightly higher execution
+    const executionPrice = isShort
+      ? currentPrice * (1 + this.slippagePercent / 100)
+      : currentPrice * (1 - this.slippagePercent / 100);
+
     const grossQuote = sellQty * executionPrice;
     const exitFee = (grossQuote * this.feePercent) / 100;
     const netQuote = grossQuote - exitFee;
 
     // Calculate Realized P&L
     const totalFees = entryFee + exitFee;
-    const grossPnL = (executionPrice - entryPrice) * sellQty;
+    const grossPnL = isShort
+      ? (entryPrice - executionPrice) * sellQty
+      : (executionPrice - entryPrice) * sellQty;
     const netPnL = grossPnL - totalFees;
-    // Leveraged PnL% reflects percentage return on invested margin
-    const pnlPercent = margin > 0 ? (netPnL / margin) * 100 : (((executionPrice - entryPrice) / entryPrice) * 100 * lev);
+    const pnlPercent = margin > 0 ? (netPnL / margin) * 100 : (((executionPrice - entryPrice) / entryPrice) * 100 * lev * (isShort ? -1 : 1));
 
     // Update balances
-    this.balances[base] = Math.max(0, (this.balances[base] || 0) - sellQty);
-    if (lev > 1) {
-      // Leveraged return: pledged margin + net realized PnL
+    if (isShort) {
+      // Short position return: margin + net realized PnL
       const returnedCapital = Math.max(0, margin + netPnL);
       this.balances[quote] = (this.balances[quote] || 0) + returnedCapital;
     } else {
-      // 1x Spot return: net proceeds from sale
-      this.balances[quote] = (this.balances[quote] || 0) + netQuote;
+      this.balances[base] = Math.max(0, (this.balances[base] || 0) - sellQty);
+      if (lev > 1) {
+        // Leveraged return: pledged margin + net realized PnL
+        const returnedCapital = Math.max(0, margin + netPnL);
+        this.balances[quote] = (this.balances[quote] || 0) + returnedCapital;
+      } else {
+        // 1x Spot return: net proceeds from sale
+        this.balances[quote] = (this.balances[quote] || 0) + netQuote;
+      }
     }
     this._syncBalances();
 
@@ -283,7 +407,7 @@ class PaperTradingEngine {
       orderId,
       exchangeOrderId: orderId,
       pair,
-      side: 'sell',
+      side: isShort ? 'buy_to_cover' : 'sell',
       type: 'market_order',
       price: executionPrice,
       quantity: sellQty,
@@ -300,7 +424,7 @@ class PaperTradingEngine {
     const trade = {
       tradeId,
       pair,
-      side: 'buy_then_sell',
+      side: isShort ? 'short_then_cover' : 'buy_then_sell',
       entryPrice,
       exitPrice: executionPrice,
       quantity: sellQty,
@@ -343,10 +467,13 @@ class PaperTradingEngine {
     return this.positions.map((pos) => {
       const currentPrice = currentPriceMap[pos.pair] || pos.entryPrice;
       const lev = pos.leverage || 1;
-      const unrealizedPnL = (currentPrice - pos.entryPrice) * pos.quantity;
+      const isShort = pos.side === 'short';
+      const unrealizedPnL = isShort
+        ? (pos.entryPrice - currentPrice) * pos.quantity
+        : (currentPrice - pos.entryPrice) * pos.quantity;
       const unrealizedPnLPercent = pos.margin && pos.margin > 0
         ? (unrealizedPnL / pos.margin) * 100
-        : (pos.entryPrice > 0 ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100 * lev : 0);
+        : (pos.entryPrice > 0 ? (unrealizedPnL / (pos.entryPrice * pos.quantity)) * 100 * lev : 0);
       return {
         ...pos,
         leverage: lev,

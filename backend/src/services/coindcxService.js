@@ -4,8 +4,8 @@ const config = require('../config/env');
 
 class CoinDCXService {
   constructor(options = {}) {
-    this.apiKey = options.apiKey || config.coindcx.apiKey;
-    this.apiSecret = options.apiSecret || config.coindcx.apiSecret;
+    this.apiKey = options.apiKey !== undefined ? options.apiKey : config.coindcx.apiKey;
+    this.apiSecret = options.apiSecret !== undefined ? options.apiSecret : config.coindcx.apiSecret;
     this.apiBaseUrl = options.apiBaseUrl || config.coindcx.apiBaseUrl;
     this.publicBaseUrl = options.publicBaseUrl || config.coindcx.publicBaseUrl;
 
@@ -17,6 +17,22 @@ class CoinDCXService {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       },
     });
+  }
+
+  /**
+   * Checks whether CoinDCX API Key is set and non-empty.
+   * @returns {boolean}
+   */
+  hasApiKey() {
+    return Boolean(this.apiKey && typeof this.apiKey === 'string' && this.apiKey.trim().length > 0);
+  }
+
+  /**
+   * Checks whether CoinDCX API Secret is set and non-empty.
+   * @returns {boolean}
+   */
+  hasApiSecret() {
+    return Boolean(this.apiSecret && typeof this.apiSecret === 'string' && this.apiSecret.trim().length > 0);
   }
 
   /**
@@ -185,7 +201,7 @@ class CoinDCXService {
    * @param {Object} params - { pair, interval, limit, startTime, endTime }
    */
   async getCandles({ pair = 'B-BTC_USDT', interval = '1m', limit = 100 } = {}) {
-    const allowedIntervals = ['1m', '15m', '1h', '1d'];
+    const allowedIntervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '1d'];
     const safeInterval = allowedIntervals.includes(interval) ? interval : '1m';
 
     try {

@@ -20,44 +20,46 @@ function validateSettingsPayload(payload) {
     }
   }
 
-  if (payload.stopLossPercent !== undefined) {
-    const val = parseFloat(payload.stopLossPercent);
+  if (payload.maxLossPercent !== undefined || payload.stopLossPercent !== undefined) {
+    const rawVal = payload.maxLossPercent !== undefined ? payload.maxLossPercent : payload.stopLossPercent;
+    const val = parseFloat(rawVal);
     if (isNaN(val) || val < 0.05 || val > 50) {
-      return 'Stop Loss Percent must be between 0.05% and 50%.';
+      return 'Max Loss Percent must be between 0.05% and 50%.';
+    }
+    // Ensure maxLossPercent is set if stopLossPercent was provided
+    if (payload.maxLossPercent === undefined) {
+      payload.maxLossPercent = val;
     }
   }
 
-  if (payload.takeProfitPercent !== undefined) {
-    const val = parseFloat(payload.takeProfitPercent);
-    if (isNaN(val) || val < 0.05 || val > 100) {
-      return 'Take Profit Percent must be between 0.05% and 100%.';
+  if (payload.profitLockLevels !== undefined) {
+    const levelsStr = Array.isArray(payload.profitLockLevels)
+      ? payload.profitLockLevels.join(',')
+      : String(payload.profitLockLevels);
+    const parsed = levelsStr.split(',').map((s) => parseFloat(s.trim()));
+    if (parsed.length === 0 || parsed.some((n) => isNaN(n) || n <= 0)) {
+      return 'Profit Lock Levels must be comma-separated positive numbers (e.g. 0.5,1,2,3,4,5).';
     }
   }
 
-  if (payload.trailingActivationPercent !== undefined) {
-    const val = parseFloat(payload.trailingActivationPercent);
-    if (isNaN(val) || val < 0.05 || val > 50) {
-      return 'Trailing Activation Percent must be between 0.05% and 50%.';
+  if (payload.profitLockStepAfterLast !== undefined) {
+    const val = parseFloat(payload.profitLockStepAfterLast);
+    if (isNaN(val) || val <= 0 || val > 20) {
+      return 'Profit Lock Step After Last must be a positive number between 0.1% and 20%.';
     }
   }
 
-  if (payload.trailingGivebackPercent !== undefined) {
-    const val = parseFloat(payload.trailingGivebackPercent);
-    if (isNaN(val) || val < 0.05 || val > 10) {
-      return 'Trailing Giveback Percent must be between 0.05% and 10%.';
+  if (payload.lockBufferPercent !== undefined) {
+    const val = parseFloat(payload.lockBufferPercent);
+    if (isNaN(val) || val < 0 || val > 10) {
+      return 'Lock Buffer Percent must be a number between 0% and 10%.';
     }
   }
 
   if (payload.breakevenTriggerPercent !== undefined) {
     const val = parseFloat(payload.breakevenTriggerPercent);
-    if (isNaN(val) || val < 0.05 || val > 20) {
-      return 'Breakeven Trigger Percent must be between 0.05% and 20%.';
-    }
-  }
-
-  if (payload.trailingActivationPercent !== undefined && payload.trailingGivebackPercent !== undefined) {
-    if (parseFloat(payload.trailingGivebackPercent) >= parseFloat(payload.trailingActivationPercent)) {
-      return 'Trailing Giveback Percent must be strictly less than Trailing Activation Percent.';
+    if (isNaN(val) || val < 0 || val > 20) {
+      return 'Breakeven Trigger Percent must be between 0% and 20%.';
     }
   }
 
@@ -221,6 +223,67 @@ async function runBacktest(req, res, next) {
   }
 }
 
+async function switchMode(req, res, next) {
+  try {
+    const { mode, confirmLiveRisk } = req.body || {};
+    const result = await tradingBot.switchTradingMode({ mode, confirmLiveRisk });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * Admin Controls (Rule #93)
+ */
+async function pauseEntries(req, res) {
+  tradingBot.pauseNewEntries = true;
+  tradingBot.log('Admin Control: New trade entries PAUSED', 'warn');
+  return res.json({ success: true, message: 'New trade entries PAUSED', pauseNewEntries: true });
+}
+
+async function resumeEntries(req, res) {
+  tradingBot.pauseNewEntries = false;
+  tradingBot.log('Admin Control: New trade entries RESUMED', 'info');
+  return res.json({ success: true, message: 'New trade entries RESUMED', pauseNewEntries: false });
+}
+
+async function resetDailyPause(req, res) {
+  tradingBot.riskManager.currentDailyLoss = 0;
+  tradingBot.log('Admin Control: Daily loss counter reset', 'info');
+  return res.json({ success: true, message: 'Daily loss limit counter reset to 0' });
+}
+
+async function resetConsecutiveLossPause(req, res) {
+  tradingBot.riskManager.resetConsecutiveLossPause();
+  tradingBot.log('Admin Control: Consecutive loss pause reset', 'info');
+  return res.json({ success: true, message: 'Consecutive loss pause reset successfully' });
+}
+
+/**
+ * System Health Dashboard (Rule #92)
+ */
+async function getHealthDashboard(req, res) {
+  const dashboard = tradingBot.healthMonitor.getHealthDashboard(tradingBot);
+  return res.json(dashboard);
+}
+
+/**
+ * Daily Summary Report (Rule #90)
+ */
+async function getDailySummary(req, res) {
+  const DailySummaryService = require('../services/dailySummaryService');
+  const report = DailySummaryService.generateReport({
+    startingBalance: 10000,
+    endingBalance: 10000 - tradingBot.riskManager.currentDailyLoss,
+    consecutiveLosses: tradingBot.riskManager.consecutiveLosses,
+  });
+  return res.json(report);
+}
+
 module.exports = {
   getStatus,
   startBot,
@@ -229,7 +292,14 @@ module.exports = {
   resetEmergencyStop,
   getSettings,
   updateSettings,
+  switchMode,
   simulateTrade,
   runBacktest,
   validateSettingsPayload,
+  pauseEntries,
+  resumeEntries,
+  resetDailyPause,
+  resetConsecutiveLossPause,
+  getHealthDashboard,
+  getDailySummary,
 };

@@ -54,7 +54,7 @@ export default function PriceChart({
   const domainMin = Math.floor(minPrice - padding);
   const domainMax = Math.ceil(maxPrice + padding);
 
-  const intervals = ['1m', '5m', '15m', '1h'];
+  const intervals = ['1m', '5m', '15m', '1h', '4h'];
 
   return (
     <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>

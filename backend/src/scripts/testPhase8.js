@@ -3,6 +3,7 @@ const http = require('http');
 const { io: ioClient } = require('socket.io-client');
 const { app, tradingBot } = require('../server');
 const websocketService = require('../services/websocketService');
+const config = require('../config/env');
 
 async function runPhase8Tests() {
   console.log('====================================================');
@@ -34,6 +35,7 @@ async function runPhase8Tests() {
   const clientSocket = ioClient(`http://localhost:${testPort}`, {
     transports: ['websocket'],
     autoConnect: false,
+    auth: { token: config.apiSecretKey },
   });
 
   let receivedBotStatus = null;

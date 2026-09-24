@@ -30,6 +30,7 @@ export const api = {
   resetEmergencyStop: () => client.post('/bot/reset-emergency-stop').then((r) => r.data),
   getSettings: () => client.get('/bot/settings').then((r) => r.data.settings || r.data),
   updateSettings: (settings) => client.patch('/bot/settings', settings).then((r) => r.data),
+  switchMode: (payload = {}) => client.post('/bot/mode', payload).then((r) => r.data),
   simulateTrade: (payload = {}) => client.post('/bot/simulate-trade', payload).then((r) => r.data),
   runBacktest: (payload = {}) => client.post('/bot/backtest', payload).then((r) => r.data),
 

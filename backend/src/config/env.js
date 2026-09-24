@@ -41,14 +41,23 @@ const config = {
 
   // Mode & Risk Limits
   tradingMode: validatedTradingMode,
-  defaultLeverage: parseInt(process.env.DEFAULT_LEVERAGE, 10) || 1,
+  defaultLeverage: parseInt(process.env.DEFAULT_LEVERAGE, 10) || 5,
   maxTradeAmount: parseFloat(process.env.MAX_TRADE_AMOUNT) || 50,
-  maxDailyLoss: parseFloat(process.env.MAX_DAILY_LOSS) || 100,
-  stopLossPercent: parseFloat(process.env.STOP_LOSS_PERCENT) || 2.0,
-  takeProfitPercent: parseFloat(process.env.TAKE_PROFIT_PERCENT) || 4.0,
-  trailingActivationPercent: parseFloat(process.env.TRAILING_ACTIVATION_PERCENT) || 3.5,
-  trailingGivebackPercent: parseFloat(process.env.TRAILING_GIVEBACK_PERCENT) || 0.3,
-  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 1.0,
+  riskPerTrade: parseFloat(process.env.RISK_PER_TRADE) || 0.005, // 0.5% maximum capital risk
+  maxAccountExposure: parseFloat(process.env.MAX_ACCOUNT_EXPOSURE) || 1.0, // Max 100% of balance per position
+  // Unified Exit Engine Settings
+  maxLossPercent: parseFloat(process.env.MAX_LOSS_PERCENT) || 0.75,
+  profitLockLevels: process.env.PROFIT_LOCK_LEVELS || '1.8,3,5,7,9,11,13,15',
+  profitLockStepAfterLast: parseFloat(process.env.PROFIT_LOCK_STEP_AFTER_LAST) || 1,
+  lockBufferPercent: parseFloat(process.env.LOCK_BUFFER_PERCENT) || 0,
+  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 0,
+
+  // Legacy mappings for backward compatibility
+  get stopLossPercent() { return this.maxLossPercent; },
+  get takeProfitPercent() { return 0; },
+  get trailingActivationPercent() { return 0.5; },
+  get trailingGivebackPercent() { return this.lockBufferPercent; },
+
   cooldownSeconds: parseInt(process.env.COOLDOWN_SECONDS, 10) || 60,
   maxOpenPositions: parseInt(process.env.MAX_OPEN_POSITIONS, 10) || 1,
   evalIntervalMs: parseInt(process.env.EVAL_INTERVAL_MS, 10) || 10000,
@@ -82,11 +91,15 @@ const config = {
       defaultLeverage: this.defaultLeverage,
       maxTradeAmount: this.maxTradeAmount,
       maxDailyLoss: this.maxDailyLoss,
+      maxLossPercent: this.maxLossPercent,
+      profitLockLevels: this.profitLockLevels,
+      profitLockStepAfterLast: this.profitLockStepAfterLast,
+      lockBufferPercent: this.lockBufferPercent,
+      breakevenTriggerPercent: this.breakevenTriggerPercent,
       stopLossPercent: this.stopLossPercent,
       takeProfitPercent: this.takeProfitPercent,
       trailingActivationPercent: this.trailingActivationPercent,
       trailingGivebackPercent: this.trailingGivebackPercent,
-      breakevenTriggerPercent: this.breakevenTriggerPercent,
       defaultPair: this.defaultPair,
       evalIntervalMs: this.evalIntervalMs,
     };

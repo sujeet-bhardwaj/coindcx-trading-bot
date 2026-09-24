@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, AlertTriangle, Activity, Wifi, WifiOff, Zap, Clock } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, Activity, Wifi, WifiOff, Zap, Clock, TrendingUp } from 'lucide-react';
 
 export default function Header({ botStatus, isConnected }) {
   const isRunning = botStatus?.isRunning;
   const isEmergency = botStatus?.emergencyStop;
   const mode = botStatus?.mode || 'PAPER_TRADING';
   const is3M = botStatus?.strategy === 'SCALPER_3M' || botStatus?.scalper3M?.isActive;
+  const is4H = botStatus?.strategy === 'TREND_4H' || botStatus?.scalper4H?.isActive;
 
   // Real-time second-by-second live clock for accurate countdowns
   const [now, setNow] = useState(Date.now());
@@ -15,7 +16,7 @@ export default function Header({ botStatus, isConnected }) {
   }, []);
 
   // Cycle Timer: strictly starts when bot starts, resets to 1s on sell, stops when bot is stopped
-  const cycleDurationSec = is3M ? 180 : 900;
+  const cycleDurationSec = is4H ? 14400 : (is3M ? 180 : 900);
   let cycleElapsedSec = 0;
   let cycleRemainingSec = cycleDurationSec;
 
@@ -26,13 +27,19 @@ export default function Header({ botStatus, isConnected }) {
     cycleRemainingSec = Math.max(0, cycleDurationSec - (rawElapsed % cycleDurationSec));
   }
 
-  const elMins = Math.floor(cycleElapsedSec / 60);
+  const elHours = Math.floor(cycleElapsedSec / 3600);
+  const elMins = Math.floor((cycleElapsedSec % 3600) / 60);
   const elSecs = cycleElapsedSec % 60;
-  const cycleElapsedFormatted = `${String(elMins).padStart(2, '0')}:${String(elSecs).padStart(2, '0')}`;
+  const cycleElapsedFormatted = is4H
+    ? `${String(elHours).padStart(2, '0')}:${String(elMins).padStart(2, '0')}:${String(elSecs).padStart(2, '0')}`
+    : `${String(elMins).padStart(2, '0')}:${String(elSecs).padStart(2, '0')}`;
 
-  const remMins = Math.floor(cycleRemainingSec / 60);
+  const remHours = Math.floor(cycleRemainingSec / 3600);
+  const remMins = Math.floor((cycleRemainingSec % 3600) / 60);
   const remSecs = cycleRemainingSec % 60;
-  const cycleRemainingFormatted = `${String(remMins).padStart(2, '0')}:${String(remSecs).padStart(2, '0')}`;
+  const cycleRemainingFormatted = is4H
+    ? `${String(remHours).padStart(2, '0')}:${String(remMins).padStart(2, '0')}:${String(remSecs).padStart(2, '0')}`
+    : `${String(remMins).padStart(2, '0')}:${String(remSecs).padStart(2, '0')}`;
 
   // Active position hold timer
   const activePosition = botStatus?.activePosition;
@@ -188,6 +195,33 @@ export default function Header({ botStatus, isConnected }) {
                     : scalperRemainingSec !== null
                     ? `⏱️ Auto-Exit in ${scalperTimeFormatted}`
                     : `⚡ 3M Cycle: ${cycleElapsedFormatted} / 03:00`}
+                </span>
+              </div>
+            </div>
+          ) : is4H ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 14px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.18) 0%, rgba(59, 130, 246, 0.18) 100%)',
+                border: '1px solid rgba(147, 51, 234, 0.45)',
+                boxShadow: '0 0 15px rgba(147, 51, 234, 0.25)',
+              }}
+            >
+              <TrendingUp size={18} style={{ color: '#c084fc' }} />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#e9d5ff', letterSpacing: '0.5px' }}>
+                  📈 4H TREND & SWING
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#d8b4fe', fontFamily: 'var(--font-mono)', fontWeight: '600' }}>
+                  {!isRunning
+                    ? '⏸️ Stopped (Click Start Bot)'
+                    : activePosition
+                    ? `⏱️ In Trade: ${posHoldFormatted} | Cycle: ${cycleElapsedFormatted} / 04:00:00`
+                    : `⏱️ 4H Cycle: ${cycleElapsedFormatted} / 04:00:00 (Left: ${cycleRemainingFormatted})`}
                 </span>
               </div>
             </div>

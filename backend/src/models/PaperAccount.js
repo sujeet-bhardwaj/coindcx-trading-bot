@@ -16,6 +16,7 @@ const paperPositionSchema = new mongoose.Schema(
     stopLossPercent: { type: Number },
     takeProfitPercent: { type: Number },
     peakProfitPercent: { type: Number, default: 0 },
+    lockedProfitPercent: { type: Number, default: 0 },
     trailingActive: { type: Boolean, default: false },
     effectiveStopLossPrice: { type: Number },
     strategy: { type: String, default: 'EMA_RSI' },

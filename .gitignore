@@ -34,3 +34,7 @@ Thumbs.db
 # Testing & Coverage
 coverage/
 .nyc_output/
+
+# Runtime locks
+*.lock
+.bot_instance.lock

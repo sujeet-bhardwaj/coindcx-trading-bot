@@ -182,6 +182,8 @@ function calculateMACD(values, fastPeriod = 12, slowPeriod = 26, signalPeriod = 
   return { macd: macdLine, signal: signalLine, histogram };
 }
 
+const { evaluateExit } = require('../risk/exitEngine');
+
 /**
  * Base Abstract Strategy Interface
  */
@@ -189,6 +191,15 @@ class BaseStrategy {
   constructor(name, description = '') {
     this.name = name;
     this.description = description;
+  }
+
+  /**
+   * Evaluates market context and returns trading signal
+   * @param {Object} context
+   * @returns {Object}
+   */
+  evaluate(context) {
+    return this.generateSignal(context);
   }
 
   /**
@@ -210,8 +221,9 @@ class EMARSIStrategy extends BaseStrategy {
     this.fastPeriod = options.fastPeriod || 9;
     this.slowPeriod = options.slowPeriod || 21;
     this.rsiPeriod = options.rsiPeriod || 14;
-    this.rsiOverbought = options.rsiOverbought || 68;
-    this.rsiOversold = options.rsiOversold || 38;
+    this.rsiOverbought = options.rsiOverbought || 70;
+    this.rsiOversold = options.rsiOversold || 30;
+    this.allowShort = options.allowShort !== undefined ? Boolean(options.allowShort) : false;
   }
 
   generateSignal({ candles = [], currentPrice = null, position = null }) {
@@ -246,129 +258,96 @@ class EMARSIStrategy extends BaseStrategy {
       rsi: currentRsi !== null ? parseFloat(currentRsi.toFixed(2)) : null,
     };
 
-    // 1. POSITION MANAGEMENT: Check Stop-Loss, Take-Profit, Trailing, and 15M Auto-Exit
-    if (position && position.side === 'buy') {
-      const entryPrice = position.entryPrice || effectivePrice;
-      const profitPercent = ((effectivePrice - entryPrice) / entryPrice) * 100;
-      const createdAt = position.createdAt ? new Date(position.createdAt).getTime() : Date.now();
-      const openTimeMs = Date.now() - createdAt;
-      const elapsedSeconds = Math.floor(openTimeMs / 1000);
-
-      if (position.peakProfitPercent === undefined) position.peakProfitPercent = 0;
-      if (profitPercent > position.peakProfitPercent) {
-        position.peakProfitPercent = profitPercent;
-      }
-      const peak = position.peakProfitPercent;
-      indicators.elapsedSeconds = elapsedSeconds;
-      indicators.remainingSeconds = Math.max(0, 900 - elapsedSeconds);
-      indicators.peakProfit = parseFloat(peak.toFixed(2));
-
-      // Rule a: Stop-Loss
-      if (position.stopLossPrice && effectivePrice <= position.stopLossPrice) {
+    // 1. POSITION MANAGEMENT: Unified Exit Engine + Indicator Reversal Exits (Rules #13, #45, #46)
+    if (position) {
+      // First evaluate SL and Dynamic Profit-Lock Ladder
+      const exitResult = evaluateExit(position, effectivePrice);
+      if (exitResult.action === 'SELL') {
         return {
           signal: 'SELL',
-          reason: `Stop-Loss triggered: Current price (${effectivePrice}) <= Stop-Loss (${position.stopLossPrice.toFixed(2)})`,
+          reason: exitResult.reason,
           indicators,
+          exitState: exitResult.state,
         };
       }
 
-      // Rule b: Take-Profit
-      if (position.takeProfitPrice && effectivePrice >= position.takeProfitPrice) {
-        return {
-          signal: 'SELL',
-          reason: `Take-Profit triggered: Current price (${effectivePrice}) >= Take-Profit (${position.takeProfitPrice.toFixed(2)})`,
-          indicators,
-        };
+      // Check Indicator-based Exits (Rule #13: EMA 9 < 21 OR RSI < 45 for LONG)
+      if (position.side === 'buy') {
+        if (currentFastEma !== null && currentSlowEma !== null && currentFastEma < currentSlowEma) {
+          return {
+            signal: 'SELL',
+            reason: `EMA_EXIT: Fast EMA (${currentFastEma.toFixed(2)}) crossed below Slow EMA (${currentSlowEma.toFixed(2)})`,
+            indicators,
+            exitState: exitResult.state,
+          };
+        }
+        if (currentRsi !== null && currentRsi < 45) {
+          return {
+            signal: 'SELL',
+            reason: `RSI_EXIT: RSI (${currentRsi.toFixed(1)}) dropped below 45 exit threshold`,
+            indicators,
+            exitState: exitResult.state,
+          };
+        }
       }
-
-      // Rule c: Dynamic Trailing Take-Profit (Peaked >= +0.60%, locked on 0.25% pullback)
-      if (peak >= 0.60 && (peak - profitPercent) >= 0.25) {
-        return {
-          signal: 'SELL',
-          reason: `15M Trailing Profit Locked: Peaked at +${peak.toFixed(2)}% | Locked at +${profitPercent.toFixed(2)}%`,
-          indicators,
-        };
-      }
-
-      // Rule d: Breakeven Protection (peaked >= +0.40%, drop back to 0%)
-      if (peak >= 0.40 && profitPercent <= 0) {
-        return {
-          signal: 'SELL',
-          reason: `Breakeven Exit: Trade was in profit (+${peak.toFixed(2)}%), closed at 0% to prevent loss!`,
-          indicators,
-        };
-      }
-
-      // Rule e: 15-Minute Cycle Auto-Exit (900 seconds)
-      if (openTimeMs >= 900000) {
-        return {
-          signal: 'SELL',
-          reason: `15M Cycle Complete: 15-Minute hold reached (${elapsedSeconds}s). Auto-closing to start next trade. Net: ${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}%`,
-          indicators,
-        };
-      }
-
-      // Rule f: Check Bearish Crossover to exit early
-      if (prevFastEma >= prevSlowEma && currentFastEma < currentSlowEma) {
-        return {
-          signal: 'SELL',
-          reason: `Bearish Crossover: Fast EMA (${currentFastEma.toFixed(2)}) crossed below Slow EMA (${currentSlowEma.toFixed(2)})`,
-          indicators,
-        };
+      // Check Indicator-based Exits (Rule #44: EMA 9 > 21 OR RSI > 55 for SHORT)
+      else if (position.side === 'short') {
+        if (currentFastEma !== null && currentSlowEma !== null && currentFastEma > currentSlowEma) {
+          return {
+            signal: 'SELL',
+            reason: `EMA_EXIT: Fast EMA (${currentFastEma.toFixed(2)}) crossed above Slow EMA (${currentSlowEma.toFixed(2)})`,
+            indicators,
+            exitState: exitResult.state,
+          };
+        }
+        if (currentRsi !== null && currentRsi > 55) {
+          return {
+            signal: 'SELL',
+            reason: `RSI_EXIT: RSI (${currentRsi.toFixed(1)}) rose above 55 short exit threshold`,
+            indicators,
+            exitState: exitResult.state,
+          };
+        }
       }
 
       return {
         signal: 'HOLD',
-        reason: `15M Trade Active (${elapsedSeconds}s/900s) | P&L: ${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}% | Peak: +${peak.toFixed(2)}%`,
+        reason: 'Position healthy: profit-lock monitoring active',
         indicators,
+        exitState: exitResult.state,
       };
     }
 
-    // 2. ENTRY SIGNAL EVALUATION (Active 15M cycle buying)
+    // 2. ENTRY SIGNAL EVALUATION (Rules #2, #43 for LONG; Rule #44 for SHORT)
     const isBullishCrossover = prevFastEma <= prevSlowEma && currentFastEma > currentSlowEma;
-    const isTrendBullish = currentFastEma !== null && currentSlowEma !== null && currentFastEma >= currentSlowEma;
-    const isRsiSafe = currentRsi !== null && currentRsi >= 30 && currentRsi <= 76;
-    const isRsiAcceptable = currentRsi !== null && currentRsi < this.rsiOverbought;
+    const isEmaBullish = currentFastEma !== null && currentSlowEma !== null && currentFastEma > currentSlowEma;
+    const isRsiBullishZone = currentRsi !== null && currentRsi >= 50 && currentRsi <= 70;
 
-    // Trigger A: Bullish Golden Crossover
-    if (isBullishCrossover && isRsiAcceptable) {
+    // LONG / BUY Entry: EMA 9 > EMA 21 AND 50 <= RSI <= 70
+    if (isEmaBullish && isRsiBullishZone) {
+      const crossoverTag = isBullishCrossover ? 'Bullish Crossover' : 'Bullish Trend';
       return {
         signal: 'BUY',
-        reason: `Bullish Crossover: Fast EMA (${currentFastEma.toFixed(2)}) crossed above Slow EMA (${currentSlowEma.toFixed(2)}) with RSI (${currentRsi.toFixed(1)})`,
+        reason: `${crossoverTag}: Fast EMA (${currentFastEma.toFixed(2)}) > Slow EMA (${currentSlowEma.toFixed(2)}) with RSI (${currentRsi.toFixed(1)}) in 50-70 range`,
         indicators,
       };
     }
 
-    // Trigger B: 15M Trend Momentum (Fast EMA >= Slow EMA in healthy RSI zone)
-    if (isTrendBullish && isRsiSafe) {
-      return {
-        signal: 'BUY',
-        reason: `15M Trend Momentum Trigger: Fast EMA (${currentFastEma.toFixed(2)}) >= Slow EMA (${currentSlowEma.toFixed(2)}) with RSI (${currentRsi.toFixed(1)})`,
-        indicators,
-      };
-    }
+    // OPTIONAL SHORT Entry: EMA 9 < EMA 21 AND 30 <= RSI <= 50 (Rule #44)
+    const isEmaBearish = currentFastEma !== null && currentSlowEma !== null && currentFastEma < currentSlowEma;
+    const isRsiBearishZone = currentRsi !== null && currentRsi <= 50 && currentRsi >= 30;
 
-    // Trigger C: Oversold Reversal Dip
-    if (currentRsi !== null && currentRsi <= this.rsiOversold) {
+    if (this.allowShort && isEmaBearish && isRsiBearishZone) {
       return {
-        signal: 'BUY',
-        reason: `15M Oversold Dip Trigger: RSI (${currentRsi.toFixed(1)} <= ${this.rsiOversold}) in buying zone`,
-        indicators,
-      };
-    }
-
-    // Trigger D: Healthy Trading Range
-    if (currentRsi !== null && currentRsi >= 38 && currentRsi <= 68) {
-      return {
-        signal: 'BUY',
-        reason: `15M Range Momentum Trigger: RSI (${currentRsi.toFixed(1)}) in active buying zone`,
+        signal: 'SHORT',
+        reason: `Bearish Breakdown: Fast EMA (${currentFastEma.toFixed(2)}) < Slow EMA (${currentSlowEma.toFixed(2)}) with RSI (${currentRsi.toFixed(1)}) in 30-50 range`,
         indicators,
       };
     }
 
     return {
       signal: 'HOLD',
-      reason: `15M Monitoring: Waiting for momentum confirmation (RSI: ${currentRsi !== null ? currentRsi.toFixed(1) : 'N/A'})`,
+      reason: `No trade setup: Fast EMA=${currentFastEma?.toFixed(2) || 'N/A'}, Slow EMA=${currentSlowEma?.toFixed(2) || 'N/A'}, RSI=${currentRsi?.toFixed(1) || 'N/A'} (Awaiting 15m completed candle criteria)`,
       indicators,
     };
   }
@@ -418,37 +397,15 @@ class BollingerBandsStrategy extends BaseStrategy {
       rsi: currentRsi !== null ? parseFloat(currentRsi.toFixed(2)) : null,
     };
 
-    // Position risk & exit checks
+    // Position risk & exit checks (Delegated to Unified Exit Engine)
     if (position && position.side === 'buy') {
-      if (position.stopLossPrice && effectivePrice <= position.stopLossPrice) {
-        return {
-          signal: 'SELL',
-          reason: `Stop-Loss hit: Price (${effectivePrice}) <= Stop-Loss (${position.stopLossPrice.toFixed(2)})`,
-          indicators,
-        };
-      }
-      if (position.takeProfitPrice && effectivePrice >= position.takeProfitPrice) {
-        return {
-          signal: 'SELL',
-          reason: `Take-Profit hit: Price (${effectivePrice}) >= Take-Profit (${position.takeProfitPrice.toFixed(2)})`,
-          indicators,
-        };
-      }
-      if (upper !== null && effectivePrice >= upper) {
-        return {
-          signal: 'SELL',
-          reason: `Upper Bollinger Band reached ($${effectivePrice} >= $${upper.toFixed(2)}). Mean reversion profit target reached.`,
-          indicators,
-        };
-      }
-      if (currentRsi !== null && currentRsi >= this.rsiOverbought) {
-        return {
-          signal: 'SELL',
-          reason: `Overbought RSI (${currentRsi.toFixed(1)} >= ${this.rsiOverbought}). Exiting position safely.`,
-          indicators,
-        };
-      }
-      return { signal: 'HOLD', reason: 'Holding position inside Bollinger channel.', indicators };
+      const exitResult = evaluateExit(position, effectivePrice);
+      return {
+        signal: exitResult.action === 'SELL' ? 'SELL' : 'HOLD',
+        reason: exitResult.reason,
+        indicators,
+        exitState: exitResult.state,
+      };
     }
 
     // Entry signal: Price at or below lower band with oversold RSI
@@ -500,15 +457,15 @@ class GridStrategy extends BaseStrategy {
       stepPercent,
     };
 
+    // Position risk & exit checks (Delegated to Unified Exit Engine)
     if (position && position.side === 'buy') {
-      if (position.stopLossPrice && effectivePrice <= position.stopLossPrice) {
-        return { signal: 'SELL', reason: `Grid Stop-Loss hit at $${effectivePrice}`, indicators };
-      }
-      // Target hit at upper grid step
-      if (effectivePrice >= upperStep || (position.entryPrice && effectivePrice >= position.entryPrice * (1 + stepPercent / 100))) {
-        return { signal: 'SELL', reason: `Grid Target Step hit ($${effectivePrice} >= $${upperStep.toFixed(2)})`, indicators };
-      }
-      return { signal: 'HOLD', reason: 'Holding grid position waiting for target exit.', indicators };
+      const exitResult = evaluateExit(position, effectivePrice);
+      return {
+        signal: exitResult.action === 'SELL' ? 'SELL' : 'HOLD',
+        reason: exitResult.reason,
+        indicators,
+        exitState: exitResult.state,
+      };
     }
 
     // Buy when price dips to lower grid level
@@ -564,18 +521,15 @@ class MACDRSIStrategy extends BaseStrategy {
       rsi: currentRsi !== null ? parseFloat(currentRsi.toFixed(2)) : null,
     };
 
+    // Position risk & exit checks (Delegated to Unified Exit Engine)
     if (position && position.side === 'buy') {
-      if (position.stopLossPrice && effectivePrice <= position.stopLossPrice) {
-        return { signal: 'SELL', reason: `Stop-Loss triggered at $${effectivePrice}`, indicators };
-      }
-      if (position.takeProfitPrice && effectivePrice >= position.takeProfitPrice) {
-        return { signal: 'SELL', reason: `Take-Profit reached at $${effectivePrice}`, indicators };
-      }
-      // Exit if MACD histogram flips negative
-      if (prevHist >= 0 && currentHist < 0) {
-        return { signal: 'SELL', reason: 'Bearish MACD crossover (Histogram turned negative)', indicators };
-      }
-      return { signal: 'HOLD', reason: 'Holding MACD position.', indicators };
+      const exitResult = evaluateExit(position, effectivePrice);
+      return {
+        signal: exitResult.action === 'SELL' ? 'SELL' : 'HOLD',
+        reason: exitResult.reason,
+        indicators,
+        exitState: exitResult.state,
+      };
     }
 
     // Bullish crossover: histogram turns positive and RSI is in momentum zone (45 to 68)
@@ -604,17 +558,17 @@ class MACDRSIStrategy extends BaseStrategy {
  */
 class Scalper3MStrategy extends BaseStrategy {
   constructor(options = {}) {
-    super('SCALPER_3M', '3-Minute Scalper: Dynamic trailing profit with fixed micro stop-loss (-0.35%) and 3m cycle exit.');
+    super('SCALPER_3M', '3-Minute Scalper: Micro-momentum entries with unified exit engine.');
     this.fastPeriod = options.fastPeriod || 3;
     this.slowPeriod = options.slowPeriod || 8;
     this.rsiPeriod = options.rsiPeriod || 7;
-    this.trailingActivation = options.trailingActivation || 0.30; // Activate trailing at +0.30%
-    this.trailingGiveback = options.trailingGiveback || 0.15; // 0.15% drop from peak locks profit
-    this.fixedStopLoss = options.fixedStopLoss || 0.35; // Strict fixed stop loss: -0.35%
-    this.maxHoldMs = 180000; // 3 minutes in milliseconds
   }
 
-  generateSignal({ candles = [], currentPrice = null, position = null }) {
+  evaluate(context) {
+    return this.generateSignal(context);
+  }
+
+  generateSignal({ candles = [], currentPrice = null, position = null, config = {} }) {
     const minNeeded = this.slowPeriod + 2;
     if (!candles || candles.length < minNeeded) {
       return {
@@ -642,69 +596,16 @@ class Scalper3MStrategy extends BaseStrategy {
       slowEma: currentSlow !== null ? parseFloat(currentSlow.toFixed(2)) : null,
       rsi: parseFloat(currentRsi.toFixed(1)),
       strategyType: 'SCALPER_3M',
-      maxHoldMs: this.maxHoldMs,
     };
 
-    // 1. POSITION MANAGEMENT (When trade is active)
+    // 1. POSITION MANAGEMENT (Delegated to Unified Exit Engine)
     if (position && position.side === 'buy') {
-      const entryPrice = position.entryPrice || effectivePrice;
-      const profitPercent = ((effectivePrice - entryPrice) / entryPrice) * 100;
-
-      // Track peak profit reached since entry for Dynamic Trailing
-      if (position.peakProfitPercent === undefined) position.peakProfitPercent = 0;
-      if (profitPercent > position.peakProfitPercent) {
-        position.peakProfitPercent = profitPercent;
-      }
-      const peak = position.peakProfitPercent;
-
-      const createdAt = position.createdAt ? new Date(position.createdAt).getTime() : Date.now();
-      const openTimeMs = Date.now() - createdAt;
-      const elapsedSeconds = Math.floor(openTimeMs / 1000);
-      indicators.elapsedSeconds = elapsedSeconds;
-      indicators.remainingSeconds = Math.max(0, 180 - elapsedSeconds);
-      indicators.peakProfit = parseFloat(peak.toFixed(2));
-
-      // Rule a: STRICT FIXED STOP LOSS (-0.35% — Fixed minimum loss)
-      if (profitPercent <= -this.fixedStopLoss) {
-        return {
-          signal: 'SELL',
-          reason: `Fixed Stop-Loss Hit: Loss (${profitPercent.toFixed(2)}%) <= -${this.fixedStopLoss}%. Minimum loss strictly capped!`,
-          indicators,
-        };
-      }
-
-      // Rule b: DYNAMIC TRAILING TAKE-PROFIT (UNLIMITED PROFIT POTENTIAL)
-      // Once profit reaches +0.30%, if price drops 0.15% from its highest peak -> LOCK IN PROFIT!
-      if (peak >= this.trailingActivation && (peak - profitPercent) >= this.trailingGiveback) {
-        return {
-          signal: 'SELL',
-          reason: `Dynamic Trailing Profit Locked: Peaked at +${peak.toFixed(2)}% | Sold at +${profitPercent.toFixed(2)}% (Drop: ${(peak - profitPercent).toFixed(2)}%)`,
-          indicators,
-        };
-      }
-
-      // Rule c: BREAKEVEN PROTECTION (Guaranteed zero loss if trade was in profit)
-      if (peak >= 0.25 && profitPercent <= 0) {
-        return {
-          signal: 'SELL',
-          reason: `Breakeven Exit: Trade was in profit (+${peak.toFixed(2)}%), exited at 0% to prevent loss!`,
-          indicators,
-        };
-      }
-
-      // Rule d: 3-MINUTE CYCLE AUTO-EXIT (180s)
-      if (openTimeMs >= this.maxHoldMs) {
-        return {
-          signal: 'SELL',
-          reason: `3M Cycle Complete: 3-Minute hold reached (${elapsedSeconds}s). Auto-closing to start next trade. Net: ${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}%`,
-          indicators,
-        };
-      }
-
+      const exitResult = evaluateExit(position, effectivePrice, config);
       return {
-        signal: 'HOLD',
-        reason: `3M Scalp Active (${elapsedSeconds}s/180s) | Current: ${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}% | Peak: +${peak.toFixed(2)}% (Dynamic Trailing)`,
+        signal: exitResult.action === 'SELL' ? 'SELL' : 'HOLD',
+        reason: exitResult.reason,
         indicators,
+        exitState: exitResult.state,
       };
     }
 
@@ -758,17 +659,17 @@ class Scalper3MStrategy extends BaseStrategy {
  */
 class Scalper15MStrategy extends BaseStrategy {
   constructor(options = {}) {
-    super('SCALPER_15M', '15-Minute Scalper: Dynamic trailing profit with fixed stop-loss (-0.80%) and 15m cycle auto-exit.');
+    super('SCALPER_15M', '15-Minute Scalper: Momentum execution with unified exit engine.');
     this.fastPeriod = options.fastPeriod || 9;
     this.slowPeriod = options.slowPeriod || 21;
     this.rsiPeriod = options.rsiPeriod || 14;
-    this.trailingActivation = options.trailingActivation || 0.60;
-    this.trailingGiveback = options.trailingGiveback || 0.25;
-    this.fixedStopLoss = options.fixedStopLoss || 0.80;
-    this.maxHoldMs = 900000; // 15 minutes in milliseconds
   }
 
-  generateSignal({ candles = [], currentPrice = null, position = null }) {
+  evaluate(context) {
+    return this.generateSignal(context);
+  }
+
+  generateSignal({ candles = [], currentPrice = null, position = null, config = {} }) {
     const minNeeded = this.slowPeriod + 2;
     if (!candles || candles.length < minNeeded) {
       return {
@@ -798,76 +699,16 @@ class Scalper15MStrategy extends BaseStrategy {
       slowEma: currentSlow !== null ? parseFloat(currentSlow.toFixed(2)) : null,
       rsi: parseFloat(currentRsi.toFixed(1)),
       strategyType: 'SCALPER_15M',
-      maxHoldMs: this.maxHoldMs,
     };
 
-    // 1. POSITION MANAGEMENT (When trade is active)
+    // 1. POSITION MANAGEMENT (Delegated to Unified Exit Engine)
     if (position && position.side === 'buy') {
-      const entryPrice = position.entryPrice || effectivePrice;
-      const profitPercent = ((effectivePrice - entryPrice) / entryPrice) * 100;
-
-      if (position.peakProfitPercent === undefined) position.peakProfitPercent = 0;
-      if (profitPercent > position.peakProfitPercent) {
-        position.peakProfitPercent = profitPercent;
-      }
-      const peak = position.peakProfitPercent;
-
-      const createdAt = position.createdAt ? new Date(position.createdAt).getTime() : Date.now();
-      const openTimeMs = Date.now() - createdAt;
-      const elapsedSeconds = Math.floor(openTimeMs / 1000);
-      indicators.elapsedSeconds = elapsedSeconds;
-      indicators.remainingSeconds = Math.max(0, 900 - elapsedSeconds);
-      indicators.peakProfit = parseFloat(peak.toFixed(2));
-
-      // Rule a: STRICT FIXED STOP LOSS
-      if (profitPercent <= -this.fixedStopLoss) {
-        return {
-          signal: 'SELL',
-          reason: `Fixed Stop-Loss Hit: Loss (${profitPercent.toFixed(2)}%) <= -${this.fixedStopLoss}%. Minimum loss strictly capped!`,
-          indicators,
-        };
-      }
-
-      // Rule b: DYNAMIC TRAILING TAKE-PROFIT
-      if (peak >= this.trailingActivation && (peak - profitPercent) >= this.trailingGiveback) {
-        return {
-          signal: 'SELL',
-          reason: `Dynamic Trailing Profit Locked: Peaked at +${peak.toFixed(2)}% | Sold at +${profitPercent.toFixed(2)}% (Drop: ${(peak - profitPercent).toFixed(2)}%)`,
-          indicators,
-        };
-      }
-
-      // Rule c: BREAKEVEN PROTECTION
-      if (peak >= 0.40 && profitPercent <= 0) {
-        return {
-          signal: 'SELL',
-          reason: `Breakeven Exit: Trade was in profit (+${peak.toFixed(2)}%), exited at 0% to prevent loss!`,
-          indicators,
-        };
-      }
-
-      // Rule d: 15-MINUTE CYCLE AUTO-EXIT (900s)
-      if (openTimeMs >= this.maxHoldMs) {
-        return {
-          signal: 'SELL',
-          reason: `15M Cycle Complete: 15-Minute hold reached (${elapsedSeconds}s). Auto-closing to start next trade. Net: ${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}%`,
-          indicators,
-        };
-      }
-
-      // Rule e: Bearish Crossover exit
-      if (prevFast >= prevSlow && currentFast < currentSlow) {
-        return {
-          signal: 'SELL',
-          reason: `Bearish Crossover Exit: Fast EMA (${currentFast.toFixed(2)}) crossed below Slow EMA (${currentSlow.toFixed(2)})`,
-          indicators,
-        };
-      }
-
+      const exitResult = evaluateExit(position, effectivePrice, config);
       return {
-        signal: 'HOLD',
-        reason: `15M Scalp Active (${elapsedSeconds}s/900s) | Current: ${profitPercent >= 0 ? '+' : ''}${profitPercent.toFixed(2)}% | Peak: +${peak.toFixed(2)}% (Dynamic Trailing)`,
+        signal: exitResult.action === 'SELL' ? 'SELL' : 'HOLD',
+        reason: exitResult.reason,
         indicators,
+        exitState: exitResult.state,
       };
     }
 
@@ -917,6 +758,106 @@ class Scalper15MStrategy extends BaseStrategy {
 }
 
 /**
+ * STRATEGY 7: 4-Hour Trend & Swing Strategy (TREND_4H)
+ * Higher timeframe swing trading strategy on 4-hour candles.
+ * - Macro Fast EMA (20) + Slow EMA (50) + RSI (14)
+ * - Designed for multi-hour and multi-day trend following with high conviction
+ * - Fully integrated with Unified Exit Engine, dynamic profit-locking & strict stop-loss
+ */
+class Trend4HStrategy extends BaseStrategy {
+  constructor(options = {}) {
+    super('TREND_4H', '4-Hour Trend & Swing: Macro EMA (20/50) + RSI (14) with unified exit engine.');
+    this.fastPeriod = options.fastPeriod || 20;
+    this.slowPeriod = options.slowPeriod || 50;
+    this.rsiPeriod = options.rsiPeriod || 14;
+  }
+
+  evaluate(context) {
+    return this.generateSignal(context);
+  }
+
+  generateSignal({ candles = [], currentPrice = null, position = null, config = {} }) {
+    const minNeeded = this.slowPeriod + 2;
+    if (!candles || candles.length < minNeeded) {
+      return {
+        signal: 'HOLD',
+        reason: `4H Trend: Loading sufficient historical candles (${candles?.length || 0}/${minNeeded})...`,
+        indicators: null,
+      };
+    }
+
+    const closePrices = candles.map((c) => parseFloat(c.close));
+    const effectivePrice = currentPrice !== null ? currentPrice : closePrices[closePrices.length - 1];
+
+    const fastEmaArray = calculateEMA(closePrices, this.fastPeriod);
+    const slowEmaArray = calculateEMA(closePrices, this.slowPeriod);
+    const rsiArray = calculateRSI(closePrices, this.rsiPeriod);
+
+    const len = closePrices.length;
+    const currentFast = fastEmaArray[len - 1];
+    const prevFast = fastEmaArray[len - 2];
+    const currentSlow = slowEmaArray[len - 1];
+    const prevSlow = slowEmaArray[len - 2];
+    const currentRsi = rsiArray[len - 1] !== null ? rsiArray[len - 1] : 50;
+
+    const indicators = {
+      price: effectivePrice,
+      fastEma: currentFast !== null ? parseFloat(currentFast.toFixed(2)) : null,
+      slowEma: currentSlow !== null ? parseFloat(currentSlow.toFixed(2)) : null,
+      rsi: parseFloat(currentRsi.toFixed(1)),
+      strategyType: 'TREND_4H',
+      timeframe: '4h',
+    };
+
+    // 1. POSITION MANAGEMENT (Delegated to Unified Exit Engine)
+    if (position && position.side === 'buy') {
+      const exitResult = evaluateExit(position, effectivePrice, config);
+      return {
+        signal: exitResult.action === 'SELL' ? 'SELL' : 'HOLD',
+        reason: exitResult.reason,
+        indicators,
+        exitState: exitResult.state,
+      };
+    }
+
+    // 2. ENTRY EVALUATION (4H Swing Trend Confirmation)
+    const isBullishCrossover = prevFast <= prevSlow && currentFast > currentSlow;
+    const isTrendBullish = currentFast !== null && currentSlow !== null && currentFast >= currentSlow;
+    const isRsiSafe = currentRsi >= 35 && currentRsi <= 72;
+
+    if (isBullishCrossover && isRsiSafe) {
+      return {
+        signal: 'BUY',
+        reason: `4H Golden Cross: Fast EMA (20) crossed above Slow EMA (50) with RSI (${currentRsi.toFixed(1)})`,
+        indicators,
+      };
+    }
+
+    if (isTrendBullish && isRsiSafe && currentRsi >= 45) {
+      return {
+        signal: 'BUY',
+        reason: `4H Trend Momentum: Fast EMA (${currentFast?.toFixed(1)}) >= Slow EMA (${currentSlow?.toFixed(1)}) with RSI (${currentRsi.toFixed(1)})`,
+        indicators,
+      };
+    }
+
+    if (currentRsi <= 35) {
+      return {
+        signal: 'BUY',
+        reason: `4H Oversold Dip: Macro RSI (${currentRsi.toFixed(1)} <= 35) in established market`,
+        indicators,
+      };
+    }
+
+    return {
+      signal: 'HOLD',
+      reason: `4H Trend: Waiting for trend alignment (RSI: ${currentRsi.toFixed(1)})`,
+      indicators,
+    };
+  }
+}
+
+/**
  * Strategy Registry to easily replace or load strategies
  */
 class StrategyRegistry {
@@ -928,6 +869,7 @@ class StrategyRegistry {
     this.register(new MACDRSIStrategy());
     this.register(new Scalper3MStrategy());
     this.register(new Scalper15MStrategy());
+    this.register(new Trend4HStrategy());
   }
 
   register(strategyInstance) {
@@ -965,5 +907,6 @@ module.exports = {
   MACDRSIStrategy,
   Scalper3MStrategy,
   Scalper15MStrategy,
+  Trend4HStrategy,
   strategyRegistry,
 };

@@ -70,13 +70,18 @@ export default function MetricsCards({
   const posHoldSecs = posHoldSeconds % 60;
   const posHoldFormatted = `${String(posHoldMins).padStart(2, '0')}:${String(posHoldSecs).padStart(2, '0')}`;
 
-  // Real-time dynamic unrealized P&L based on live ticker price
+  // Real-time dynamic unrealized P&L based on live ticker price (supports Long & Short)
   const effectivePrice = price || activePosition?.entryPrice || 0;
+  const isShort = activePosition?.side === 'short';
   const liveUnrealizedPnL = activePosition && effectivePrice
-    ? (effectivePrice - activePosition.entryPrice) * activePosition.quantity
+    ? (isShort
+        ? (activePosition.entryPrice - effectivePrice) * activePosition.quantity
+        : (effectivePrice - activePosition.entryPrice) * activePosition.quantity)
     : (activePosition?.unrealizedPnL || 0);
   const liveUnrealizedPnLPercent = activePosition && activePosition.entryPrice > 0 && effectivePrice
-    ? ((effectivePrice - activePosition.entryPrice) / activePosition.entryPrice) * 100
+    ? (isShort
+        ? ((activePosition.entryPrice - effectivePrice) / activePosition.entryPrice) * 100
+        : ((effectivePrice - activePosition.entryPrice) / activePosition.entryPrice) * 100)
     : (activePosition?.unrealizedPnLPercent || 0);
 
   // 3-Minute Scalper timing
@@ -452,27 +457,23 @@ export default function MetricsCards({
             {activePosition ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>🎯 Take-Profit Sell (+5.0%):</span>
-                  <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#4ade80', fontFamily: 'var(--font-mono)' }}>
-                    {currencySymbol}{activePosition.entryPrice ? (activePosition.entryPrice * (1 + (botStatus?.riskLimits?.takeProfitPercent || 5) / 100)).toFixed(isINR ? 0 : 2) : '---'} (+5%)
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>🔒 Stepped Profit Lock:</span>
+                  <span style={{ fontSize: '0.88rem', fontWeight: '700', color: activePosition.lockedProfitPercent > 0 ? '#4ade80' : '#c084fc', fontFamily: 'var(--font-mono)' }}>
+                    {activePosition.lockedProfitPercent > 0
+                      ? `Locked at +${activePosition.lockedProfitPercent.toFixed(2)}% (Peak: +${(activePosition.peakProfitPercent || 0).toFixed(2)}%)`
+                      : `Next Lock: +0.50% (Peak: +${(activePosition.peakProfitPercent || 0).toFixed(2)}%)`}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>⚡ Trailing Profit Lock:</span>
-                  <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#c084fc', fontFamily: 'var(--font-mono)' }}>
-                    {activePosition.trailingActive ? `Active (Sell on -0.5% drop from +${activePosition.peakProfitPercent?.toFixed(2)}%)` : `Arms at +${botStatus?.riskLimits?.trailingActivationPercent || 3.0}%`}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>🛑 Stop-Loss Safety (-1.8%):</span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>🛑 Hard Max-Loss Floor:</span>
                   <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#f87171', fontFamily: 'var(--font-mono)' }}>
-                    {currencySymbol}{activePosition.entryPrice ? (activePosition.entryPrice * (1 - (botStatus?.riskLimits?.stopLossPercent || 1.8) / 100)).toFixed(isINR ? 0 : 2) : '---'} (-1.8%)
+                    {currencySymbol}{activePosition.entryPrice ? (activePosition.entryPrice * (1 - (botStatus?.riskLimits?.maxLossPercent || 0.75) / 100)).toFixed(isINR ? 0 : 2) : '---'} (-{botStatus?.riskLimits?.maxLossPercent || 0.75}%)
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>⏱️ 15-Min Auto-Cycle Sell:</span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>🚀 Profit Ceiling:</span>
                   <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#67e8f9', fontFamily: 'var(--font-mono)' }}>
-                    In {cycleRemainingFormatted} (15 min me close hoga)
+                    Unlimited (No fixed TP — winner runs)
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
@@ -711,7 +712,7 @@ export default function MetricsCards({
               </span>
             </div>
 
-            {/* Peak & Trailing Status Indicator */}
+            {/* Peak & Profit-Lock Status Indicator */}
             <div
               style={{
                 display: 'flex',
@@ -720,16 +721,12 @@ export default function MetricsCards({
                 margin: '6px 0',
                 padding: '4px 8px',
                 borderRadius: '6px',
-                background: activePosition.trailingActive
-                  ? 'rgba(168, 85, 247, 0.15)'
-                  : (activePosition.peakProfitPercent >= (botStatus?.riskLimits?.breakevenTriggerPercent ?? 1.0))
-                  ? 'rgba(34, 197, 94, 0.12)'
+                background: activePosition.lockedProfitPercent > 0
+                  ? 'rgba(34, 197, 94, 0.15)'
                   : 'rgba(255, 255, 255, 0.04)',
                 border: `1px solid ${
-                  activePosition.trailingActive
-                    ? 'rgba(168, 85, 247, 0.35)'
-                    : (activePosition.peakProfitPercent >= (botStatus?.riskLimits?.breakevenTriggerPercent ?? 1.0))
-                    ? 'rgba(34, 197, 94, 0.25)'
+                  activePosition.lockedProfitPercent > 0
+                    ? 'rgba(34, 197, 94, 0.35)'
                     : 'rgba(255, 255, 255, 0.08)'
                 }`,
                 fontSize: '0.74rem',
@@ -741,27 +738,20 @@ export default function MetricsCards({
               <span
                 style={{
                   fontWeight: '600',
-                  color: activePosition.trailingActive
-                    ? '#c084fc'
-                    : (activePosition.peakProfitPercent >= (botStatus?.riskLimits?.breakevenTriggerPercent ?? 1.0))
-                    ? '#4ade80'
-                    : 'var(--text-dim)',
+                  color: activePosition.lockedProfitPercent > 0 ? '#4ade80' : 'var(--text-dim)',
                 }}
               >
-                {activePosition.trailingActive
-                  ? `⚡ Trailing Active (Sell on -${botStatus?.riskLimits?.trailingGivebackPercent ?? 0.3}% drop)`
-                  : (activePosition.peakProfitPercent >= (botStatus?.riskLimits?.breakevenTriggerPercent ?? 1.0))
-                  ? '🛡️ Breakeven Locked'
-                  : `Arms at +${botStatus?.riskLimits?.trailingActivationPercent ?? 3.5}%`}
+                {activePosition.lockedProfitPercent > 0
+                  ? `🔒 Locked +${activePosition.lockedProfitPercent.toFixed(2)}%`
+                  : 'Floor: -0.75%'}
               </span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
               <span>
-                SL: ${(activePosition.effectiveStopLossPrice || activePosition.stopLossPrice)?.toFixed(2)}
-                {activePosition.effectiveStopLossPrice && activePosition.effectiveStopLossPrice >= activePosition.entryPrice ? ' (BE)' : ''}
+                Stop Floor: ${(activePosition.entryPrice * (1 - (botStatus?.riskLimits?.maxLossPercent || 0.75) / 100)).toFixed(2)} (-{botStatus?.riskLimits?.maxLossPercent || 0.75}%)
               </span>
-              <span>TP: ${activePosition.takeProfitPrice?.toFixed(2)}</span>
+              <span>Lock: {activePosition.lockedProfitPercent > 0 ? `+${activePosition.lockedProfitPercent}%` : 'Unarmed'}</span>
             </div>
             {(botStatus?.activePositions?.length > 1) && (
               <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.08)', fontSize: '0.74rem', color: 'var(--accent-cyan)' }}>

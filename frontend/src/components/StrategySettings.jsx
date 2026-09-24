@@ -39,21 +39,27 @@ const STRATEGY_DEFINITIONS = [
     badge: 'Momentum Breakout',
     desc: 'Captures explosive trend movements when MACD histogram flips positive with healthy RSI.',
   },
+  {
+    id: 'TREND_4H',
+    name: '📈 4-Hour Trend & Swing (EMA 20/50 + RSI)',
+    badge: '4-Hour Swing',
+    desc: 'Macro 4-hour trend following: EMA (20/50) golden cross/momentum with RSI (14) filter, unified profit-locking ladder, and strict stop-loss.',
+  },
 ];
 
 export default function StrategySettings({ botStatus, onSettingsUpdated }) {
   const [activeTab, setActiveTab] = useState('settings'); // 'settings' | 'backtest'
 
-  // Settings State
+  // Settings State (Default Leverage: 5x)
   const [settings, setSettings] = useState({
     strategy: 'EMA_RSI',
     tradeAmount: 50,
-    leverage: 1,
-    stopLossPercent: 2.0,
-    takeProfitPercent: 4.0,
-    trailingActivationPercent: 3.5,
-    trailingGivebackPercent: 0.3,
-    breakevenTriggerPercent: 1.0,
+    leverage: 5,
+    maxLossPercent: 0.75,
+    profitLockLevels: '1.8,3,5,7,9,11,13,15',
+    profitLockStepAfterLast: 1,
+    lockBufferPercent: 0,
+    breakevenTriggerPercent: 0,
     maxDailyLoss: 100,
     maxOpenPositions: 1,
     cooldownSeconds: 60,
@@ -66,19 +72,19 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Backtest State
+  // Backtest State (Default Leverage: 5x)
   const [backtestConfig, setBacktestConfig] = useState({
     pair: 'BTCUSDT',
     strategyName: 'EMA_RSI',
     interval: '15m',
     limit: 200,
     tradeAmount: 100,
-    leverage: 1,
-    stopLossPercent: 2.0,
-    takeProfitPercent: 4.0,
-    trailingActivationPercent: 3.5,
-    trailingGivebackPercent: 0.3,
-    breakevenTriggerPercent: 1.0,
+    leverage: 5,
+    maxLossPercent: 0.75,
+    profitLockLevels: '1.8,3,5,7,9,11,13,15',
+    profitLockStepAfterLast: 1,
+    lockBufferPercent: 0,
+    breakevenTriggerPercent: 0,
   });
   const [backtestLoading, setBacktestLoading] = useState(false);
   const [backtestResult, setBacktestResult] = useState(null);
@@ -92,10 +98,10 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
         tradeAmount: botStatus.tradeAmount || prev.tradeAmount,
         leverage: botStatus.leverage ?? botStatus.riskLimits?.leverage ?? prev.leverage,
         evalIntervalMs: botStatus.evalIntervalMs || prev.evalIntervalMs,
-        stopLossPercent: botStatus.riskLimits?.stopLossPercent ?? prev.stopLossPercent,
-        takeProfitPercent: botStatus.riskLimits?.takeProfitPercent ?? prev.takeProfitPercent,
-        trailingActivationPercent: botStatus.riskLimits?.trailingActivationPercent ?? prev.trailingActivationPercent,
-        trailingGivebackPercent: botStatus.riskLimits?.trailingGivebackPercent ?? prev.trailingGivebackPercent,
+        maxLossPercent: botStatus.riskLimits?.maxLossPercent ?? prev.maxLossPercent,
+        profitLockLevels: botStatus.riskLimits?.profitLockLevels ?? prev.profitLockLevels,
+        profitLockStepAfterLast: botStatus.riskLimits?.profitLockStepAfterLast ?? prev.profitLockStepAfterLast,
+        lockBufferPercent: botStatus.riskLimits?.lockBufferPercent ?? prev.lockBufferPercent,
         breakevenTriggerPercent: botStatus.riskLimits?.breakevenTriggerPercent ?? prev.breakevenTriggerPercent,
         maxDailyLoss: botStatus.riskLimits?.maxDailyLoss ?? prev.maxDailyLoss,
         maxOpenPositions: botStatus.riskLimits?.maxOpenPositions ?? prev.maxOpenPositions,
@@ -106,6 +112,8 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
         pair: botStatus.pair || prev.pair,
         strategyName: botStatus.strategy || prev.strategyName,
         leverage: botStatus.leverage ?? prev.leverage,
+        maxLossPercent: botStatus.riskLimits?.maxLossPercent ?? prev.maxLossPercent,
+        profitLockLevels: botStatus.riskLimits?.profitLockLevels ?? prev.profitLockLevels,
       }));
     }
   }, [botStatus]);
@@ -113,7 +121,7 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
   const handleChange = (field, val) => {
     setSettings((prev) => ({
       ...prev,
-      [field]: field === 'strategy' ? val : parseFloat(val) || 0,
+      [field]: (field === 'strategy' || field === 'profitLockLevels') ? val : (val === '' ? '' : parseFloat(val) || 0),
     }));
   };
 
@@ -145,11 +153,11 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
         limit: parseInt(backtestConfig.limit, 10),
         tradeAmount: parseFloat(backtestConfig.tradeAmount),
         leverage: parseInt(backtestConfig.leverage, 10) || 1,
-        stopLossPercent: parseFloat(backtestConfig.stopLossPercent),
-        takeProfitPercent: parseFloat(backtestConfig.takeProfitPercent),
-        trailingActivationPercent: parseFloat(backtestConfig.trailingActivationPercent),
-        trailingGivebackPercent: parseFloat(backtestConfig.trailingGivebackPercent),
-        breakevenTriggerPercent: parseFloat(backtestConfig.breakevenTriggerPercent),
+        maxLossPercent: parseFloat(backtestConfig.maxLossPercent),
+        profitLockLevels: backtestConfig.profitLockLevels,
+        profitLockStepAfterLast: parseFloat(backtestConfig.profitLockStepAfterLast || 1),
+        lockBufferPercent: parseFloat(backtestConfig.lockBufferPercent || 0),
+        breakevenTriggerPercent: parseFloat(backtestConfig.breakevenTriggerPercent || 0),
       });
       if (res.success) {
         setBacktestResult(res);
@@ -496,34 +504,40 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
 
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                Stop Loss (%)
+                Hard Max Loss (%)
               </label>
               <input
                 type="number"
                 step="0.05"
                 className="form-input"
-                value={settings.stopLossPercent}
-                onChange={(e) => handleChange('stopLossPercent', e.target.value)}
+                value={settings.maxLossPercent}
+                onChange={(e) => handleChange('maxLossPercent', e.target.value)}
                 min="0.05"
                 max="30"
                 required
               />
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
+                Market-sells immediately if profit% drops to -{settings.maxLossPercent}%
+              </span>
             </div>
 
             <div>
               <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                Take Profit (%)
+                Breakeven Trigger (%) [0 = OFF]
               </label>
               <input
                 type="number"
-                step="0.1"
+                step="0.05"
                 className="form-input"
-                value={settings.takeProfitPercent}
-                onChange={(e) => handleChange('takeProfitPercent', e.target.value)}
-                min="0.5"
-                max="50"
+                value={settings.breakevenTriggerPercent}
+                onChange={(e) => handleChange('breakevenTriggerPercent', e.target.value)}
+                min="0"
+                max="10"
                 required
               />
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
+                0 = Off (pure ladder). Moves stop to entry price once touched.
+              </span>
             </div>
 
             <div>
@@ -558,11 +572,11 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
             </div>
           </div>
 
-          {/* Dynamic Trailing TP / SL & Breakeven Controls */}
+          {/* Stepped Profit-Lock Ladder Engine Controls */}
           <div
             style={{
-              background: 'rgba(168, 85, 247, 0.05)',
-              border: '1px solid rgba(168, 85, 247, 0.2)',
+              background: 'rgba(34, 197, 94, 0.05)',
+              border: '1px solid rgba(34, 197, 94, 0.2)',
               borderRadius: '12px',
               padding: '16px',
               marginBottom: '20px',
@@ -570,22 +584,22 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <TrendingUp size={16} style={{ color: '#c084fc' }} />
-                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#e9d5ff' }}>
-                  Dynamic Trailing Take-Profit & Breakeven Engine
+                <TrendingUp size={16} style={{ color: '#4ade80' }} />
+                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#bbf7d0' }}>
+                  Stepped Profit-Lock Ladder Engine (Unified Exits)
                 </span>
               </div>
               <span
                 style={{
                   fontSize: '0.72rem',
-                  color: '#c084fc',
-                  background: 'rgba(168, 85, 247, 0.15)',
+                  color: '#4ade80',
+                  background: 'rgba(34, 197, 94, 0.15)',
                   padding: '2px 8px',
                   borderRadius: '9999px',
-                  border: '1px solid rgba(168, 85, 247, 0.3)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
                 }}
               >
-                Profit-Locking Active
+                Unlimited Upside (No Fixed TP)
               </span>
             </div>
 
@@ -598,58 +612,56 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
             >
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Breakeven Trigger (%)
+                  Ladder Lock Levels (%)
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={settings.profitLockLevels}
+                  onChange={(e) => handleChange('profitLockLevels', e.target.value)}
+                  placeholder="1.8,3,5,7,9,11,13,15"
+                  required
+                />
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
+                  Steps lock up when peak reaches each level (1.8% -&gt; 1.8%, 3% -&gt; 3%, etc.)
+                </span>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
+                  Step After Last Level (%)
                 </label>
                 <input
                   type="number"
-                  step="0.05"
+                  step="0.5"
                   className="form-input"
-                  value={settings.breakevenTriggerPercent}
-                  onChange={(e) => handleChange('breakevenTriggerPercent', e.target.value)}
-                  min="0.05"
+                  value={settings.profitLockStepAfterLast}
+                  onChange={(e) => handleChange('profitLockStepAfterLast', e.target.value)}
+                  min="0.1"
                   max="10"
                   required
                 />
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
-                  Moves SL to entry price (0% loss) once profit touches this %
+                  Continues stepping after last level (e.g. +1% step: 7.3% peak -&gt; lock 7%)
                 </span>
               </div>
 
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Trailing Activation (%)
+                  Lock Buffer (%)
                 </label>
                 <input
                   type="number"
                   step="0.05"
                   className="form-input"
-                  value={settings.trailingActivationPercent}
-                  onChange={(e) => handleChange('trailingActivationPercent', e.target.value)}
-                  min="0.05"
-                  max="30"
-                  required
-                />
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
-                  Arms trailing profit-lock once peak profit reaches this %
-                </span>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Trailing Giveback / Drop (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.05"
-                  className="form-input"
-                  value={settings.trailingGivebackPercent}
-                  onChange={(e) => handleChange('trailingGivebackPercent', e.target.value)}
-                  min="0.05"
+                  value={settings.lockBufferPercent}
+                  onChange={(e) => handleChange('lockBufferPercent', e.target.value)}
+                  min="0"
                   max="5"
                   required
                 />
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'block', marginTop: '4px' }}>
-                  Auto-sells if profit falls by this % from peak
+                  Sell threshold = locked level - buffer (0 = sell when profit drops below lock)
                 </span>
               </div>
             </div>
@@ -789,71 +801,70 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
 
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Stop Loss (%)
+                  Hard Max Loss (%)
                 </label>
                 <input
                   type="number"
-                  step="0.1"
+                  step="0.05"
                   className="form-input"
-                  value={backtestConfig.stopLossPercent}
-                  onChange={(e) => setBacktestConfig({ ...backtestConfig, stopLossPercent: e.target.value })}
-                  min="0.5"
+                  value={backtestConfig.maxLossPercent}
+                  onChange={(e) => setBacktestConfig({ ...backtestConfig, maxLossPercent: e.target.value })}
+                  min="0.05"
                 />
               </div>
 
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Take Profit (%)
+                  Ladder Lock Levels (%)
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
+                  type="text"
                   className="form-input"
-                  value={backtestConfig.takeProfitPercent}
-                  onChange={(e) => setBacktestConfig({ ...backtestConfig, takeProfitPercent: e.target.value })}
-                  min="0.5"
+                  value={backtestConfig.profitLockLevels}
+                  onChange={(e) => setBacktestConfig({ ...backtestConfig, profitLockLevels: e.target.value })}
+                  placeholder="1.8,3,5,7,9,11,13,15"
                 />
               </div>
 
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Breakeven Trigger (%)
+                  Step After Last Level (%)
                 </label>
                 <input
                   type="number"
-                  step="0.1"
+                  step="0.5"
                   className="form-input"
-                  value={backtestConfig.breakevenTriggerPercent}
-                  onChange={(e) => setBacktestConfig({ ...backtestConfig, breakevenTriggerPercent: e.target.value })}
+                  value={backtestConfig.profitLockStepAfterLast || 1}
+                  onChange={(e) => setBacktestConfig({ ...backtestConfig, profitLockStepAfterLast: e.target.value })}
                   min="0.1"
                 />
               </div>
 
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Trailing Activation (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  className="form-input"
-                  value={backtestConfig.trailingActivationPercent}
-                  onChange={(e) => setBacktestConfig({ ...backtestConfig, trailingActivationPercent: e.target.value })}
-                  min="0.5"
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Trailing Giveback (%)
+                  Lock Buffer (%)
                 </label>
                 <input
                   type="number"
                   step="0.05"
                   className="form-input"
-                  value={backtestConfig.trailingGivebackPercent}
-                  onChange={(e) => setBacktestConfig({ ...backtestConfig, trailingGivebackPercent: e.target.value })}
-                  min="0.05"
+                  value={backtestConfig.lockBufferPercent || 0}
+                  onChange={(e) => setBacktestConfig({ ...backtestConfig, lockBufferPercent: e.target.value })}
+                  min="0"
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
+                  Breakeven Trigger (%) [0 = OFF]
+                </label>
+                <input
+                  type="number"
+                  step="0.05"
+                  className="form-input"
+                  value={backtestConfig.breakevenTriggerPercent || 0}
+                  onChange={(e) => setBacktestConfig({ ...backtestConfig, breakevenTriggerPercent: e.target.value })}
+                  min="0"
                 />
               </div>
             </div>
