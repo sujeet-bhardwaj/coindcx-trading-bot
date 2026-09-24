@@ -23,6 +23,12 @@ const botSettingsSchema = new mongoose.Schema(
       type: Number,
       default: 50,
     },
+    leverage: {
+      type: Number,
+      default: 1,
+      min: 1,
+      max: 100,
+    },
     stopLossPercent: {
       type: Number,
       default: 2.0,
@@ -30,6 +36,18 @@ const botSettingsSchema = new mongoose.Schema(
     takeProfitPercent: {
       type: Number,
       default: 4.0,
+    },
+    trailingActivationPercent: {
+      type: Number,
+      default: 3.5,
+    },
+    trailingGivebackPercent: {
+      type: Number,
+      default: 0.3,
+    },
+    breakevenTriggerPercent: {
+      type: Number,
+      default: 1.0,
     },
     maxDailyLoss: {
       type: Number,
@@ -46,6 +64,10 @@ const botSettingsSchema = new mongoose.Schema(
     strategy: {
       type: String,
       default: 'EMA_RSI',
+    },
+    evalIntervalMs: {
+      type: Number,
+      default: 10000,
     },
     fastEmaPeriod: {
       type: Number,

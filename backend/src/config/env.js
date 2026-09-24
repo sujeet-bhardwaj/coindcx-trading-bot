@@ -35,16 +35,26 @@ const config = {
   // Database
   mongodbUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/coindcx_bot',
 
+  // Security & Networking
+  apiSecretKey: process.env.API_SECRET_KEY || 'dev-secret-key',
+  corsOrigin: process.env.CORS_ORIGIN || '*',
+
   // Mode & Risk Limits
   tradingMode: validatedTradingMode,
+  defaultLeverage: parseInt(process.env.DEFAULT_LEVERAGE, 10) || 1,
   maxTradeAmount: parseFloat(process.env.MAX_TRADE_AMOUNT) || 50,
   maxDailyLoss: parseFloat(process.env.MAX_DAILY_LOSS) || 100,
   stopLossPercent: parseFloat(process.env.STOP_LOSS_PERCENT) || 2.0,
   takeProfitPercent: parseFloat(process.env.TAKE_PROFIT_PERCENT) || 4.0,
+  trailingActivationPercent: parseFloat(process.env.TRAILING_ACTIVATION_PERCENT) || 3.5,
+  trailingGivebackPercent: parseFloat(process.env.TRAILING_GIVEBACK_PERCENT) || 0.3,
+  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 1.0,
   cooldownSeconds: parseInt(process.env.COOLDOWN_SECONDS, 10) || 60,
   maxOpenPositions: parseInt(process.env.MAX_OPEN_POSITIONS, 10) || 1,
+  evalIntervalMs: parseInt(process.env.EVAL_INTERVAL_MS, 10) || 10000,
 
   // Strategy defaults
+  defaultStrategy: process.env.DEFAULT_STRATEGY || 'SCALPER_3M',
   defaultPair: process.env.DEFAULT_PAIR || 'BTCUSDT',
   fastEmaPeriod: parseInt(process.env.FAST_EMA_PERIOD, 10) || 20,
   slowEmaPeriod: parseInt(process.env.SLOW_EMA_PERIOD, 10) || 50,
@@ -67,11 +77,18 @@ const config = {
       tradingMode: this.tradingMode,
       hasApiKey: Boolean(this.coindcx.apiKey),
       hasApiSecret: Boolean(this.coindcx.apiSecret),
+      hasApiSecretKey: Boolean(this.apiSecretKey),
+      corsOrigin: this.corsOrigin,
+      defaultLeverage: this.defaultLeverage,
       maxTradeAmount: this.maxTradeAmount,
       maxDailyLoss: this.maxDailyLoss,
       stopLossPercent: this.stopLossPercent,
       takeProfitPercent: this.takeProfitPercent,
+      trailingActivationPercent: this.trailingActivationPercent,
+      trailingGivebackPercent: this.trailingGivebackPercent,
+      breakevenTriggerPercent: this.breakevenTriggerPercent,
       defaultPair: this.defaultPair,
+      evalIntervalMs: this.evalIntervalMs,
     };
   }
 };

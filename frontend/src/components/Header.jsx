@@ -1,10 +1,53 @@
-import React from 'react';
-import { ShieldCheck, AlertTriangle, Activity, Wifi, WifiOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, AlertTriangle, Activity, Wifi, WifiOff, Zap, Clock } from 'lucide-react';
 
 export default function Header({ botStatus, isConnected }) {
   const isRunning = botStatus?.isRunning;
   const isEmergency = botStatus?.emergencyStop;
   const mode = botStatus?.mode || 'PAPER_TRADING';
+  const is3M = botStatus?.strategy === 'SCALPER_3M' || botStatus?.scalper3M?.isActive;
+
+  // Real-time second-by-second live clock for accurate countdowns
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Cycle Timer: strictly starts when bot starts, resets to 1s on sell, stops when bot is stopped
+  const cycleDurationSec = is3M ? 180 : 900;
+  let cycleElapsedSec = 0;
+  let cycleRemainingSec = cycleDurationSec;
+
+  if (isRunning && botStatus?.cycleStartTime) {
+    const cycleStartMs = new Date(botStatus.cycleStartTime).getTime();
+    const rawElapsed = Math.max(0, Math.floor((now - cycleStartMs) / 1000));
+    cycleElapsedSec = (rawElapsed % cycleDurationSec) + 1; // 1-indexed, starts from 1s
+    cycleRemainingSec = Math.max(0, cycleDurationSec - (rawElapsed % cycleDurationSec));
+  }
+
+  const elMins = Math.floor(cycleElapsedSec / 60);
+  const elSecs = cycleElapsedSec % 60;
+  const cycleElapsedFormatted = `${String(elMins).padStart(2, '0')}:${String(elSecs).padStart(2, '0')}`;
+
+  const remMins = Math.floor(cycleRemainingSec / 60);
+  const remSecs = cycleRemainingSec % 60;
+  const cycleRemainingFormatted = `${String(remMins).padStart(2, '0')}:${String(remSecs).padStart(2, '0')}`;
+
+  // Active position hold timer
+  const activePosition = botStatus?.activePosition;
+  const posHoldSeconds = activePosition?.createdAt
+    ? Math.floor((now - new Date(activePosition.createdAt).getTime()) / 1000)
+    : 0;
+  const posHoldMins = Math.floor(posHoldSeconds / 60);
+  const posHoldSecs = posHoldSeconds % 60;
+  const posHoldFormatted = `${String(posHoldMins).padStart(2, '0')}:${String(posHoldSecs).padStart(2, '0')}`;
+
+  // 3M Scalper timing
+  const scalperRemainingSec = activePosition ? Math.max(0, 180 - posHoldSeconds) : null;
+  const sMins = scalperRemainingSec !== null ? Math.floor(scalperRemainingSec / 60) : 0;
+  const sSecs = scalperRemainingSec !== null ? scalperRemainingSec % 60 : 0;
+  const scalperTimeFormatted = scalperRemainingSec !== null ? `${String(sMins).padStart(2, '0')}:${String(sSecs).padStart(2, '0')}` : null;
 
   return (
     <header className="glass-panel" style={{ padding: '16px 24px', marginBottom: '24px' }}>
@@ -64,6 +107,45 @@ export default function Header({ botStatus, isConnected }) {
             </span>
           </div>
 
+          {/* LEVERAGE MULTIPLIER BADGE */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+            <span
+              className="badge"
+              style={{
+                fontSize: '0.85rem',
+                padding: '6px 14px',
+                background:
+                  (botStatus?.leverage || 1) === 1
+                    ? 'rgba(16, 185, 129, 0.15)'
+                    : (botStatus?.leverage || 1) <= 5
+                    ? 'rgba(6, 182, 212, 0.15)'
+                    : 'rgba(245, 158, 11, 0.15)',
+                color:
+                  (botStatus?.leverage || 1) === 1
+                    ? '#34d399'
+                    : (botStatus?.leverage || 1) <= 5
+                    ? '#22d3ee'
+                    : '#fbbf24',
+                border: `1px solid ${
+                  (botStatus?.leverage || 1) === 1
+                    ? 'rgba(16, 185, 129, 0.3)'
+                    : (botStatus?.leverage || 1) <= 5
+                    ? 'rgba(6, 182, 212, 0.3)'
+                    : 'rgba(245, 158, 11, 0.3)'
+                }`,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <Zap size={15} style={{ color: (botStatus?.leverage || 1) > 1 ? '#f59e0b' : '#34d399' }} />
+              {(botStatus?.leverage || 1) > 1 ? `${botStatus.leverage}x LEVERAGE` : '1x SPOT'}
+            </span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px', fontWeight: '500' }}>
+              {(botStatus?.leverage || 1) > 1 ? `${botStatus.leverage}x Margin Multiplier` : 'Zero Borrowing'}
+            </span>
+          </div>
+
           {/* BOT EXECUTION STATE */}
           <div>
             {isEmergency ? (
@@ -80,6 +162,63 @@ export default function Header({ botStatus, isConnected }) {
               </span>
             )}
           </div>
+
+          {/* ACTIVE STRATEGY BADGE */}
+          {is3M ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 14px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.18) 0%, rgba(249, 115, 22, 0.18) 100%)',
+                border: '1px solid rgba(234, 179, 8, 0.45)',
+                boxShadow: '0 0 15px rgba(234, 179, 8, 0.25)',
+              }}
+            >
+              <Zap size={18} style={{ color: '#facc15' }} className="pulse-yellow" />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#fef08a', letterSpacing: '0.5px' }}>
+                  3-MIN SCALPER
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#fde047', fontFamily: 'var(--font-mono)', fontWeight: '600' }}>
+                  {!isRunning
+                    ? '⏸️ Stopped (Click Start Bot)'
+                    : scalperRemainingSec !== null
+                    ? `⏱️ Auto-Exit in ${scalperTimeFormatted}`
+                    : `⚡ 3M Cycle: ${cycleElapsedFormatted} / 03:00`}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 14px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                boxShadow: '0 0 15px rgba(16, 185, 129, 0.2)',
+              }}
+            >
+              <Activity size={18} style={{ color: '#34d399' }} />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#a7f3d0', letterSpacing: '0.5px' }}>
+                  📈 15M TREND FOLLOWER
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#6ee7b7', fontFamily: 'var(--font-mono)', fontWeight: '600' }}>
+                  {!isRunning
+                    ? '⏸️ Stopped (Click Start Bot)'
+                    : activePosition
+                    ? `⏱️ In Trade: ${posHoldFormatted} | Cycle: ${cycleElapsedFormatted} / 15:00`
+                    : `⏱️ 15M Cycle: ${cycleElapsedFormatted} / 15:00 (Left: ${cycleRemainingFormatted})`}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* SOCKET CONNECTION INDICATOR */}
           <div

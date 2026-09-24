@@ -10,10 +10,11 @@ class CoinDCXService {
     this.publicBaseUrl = options.publicBaseUrl || config.coindcx.publicBaseUrl;
 
     this.client = axios.create({
-      timeout: 10000,
+      timeout: 15000,
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       },
     });
   }
@@ -56,20 +57,73 @@ class CoinDCXService {
    * Endpoint: GET https://api.coindcx.com/exchange/ticker
    */
   async getTicker(pair = null) {
+    const normalizedPair = pair ? pair.toUpperCase().replace(/[-_]/g, '') : null;
+
+    // 1. Try Primary CoinDCX endpoint
     try {
       const response = await this.client.get(`${this.apiBaseUrl}/exchange/ticker`);
       const tickers = response.data;
-      if (pair) {
-        const normalizedPair = pair.toUpperCase().replace(/[-_]/g, '');
-        const match = tickers.find((t) => t.market === normalizedPair || t.market === pair);
-        if (!match) {
-          throw new Error(`Market ticker not found for pair: ${pair}`);
-        }
-        return match;
+      if (normalizedPair) {
+        const match = Array.isArray(tickers) ? tickers.find((t) => t.market === normalizedPair || t.market === pair) : null;
+        if (match) return match;
+        throw new Error(`Ticker not found for ${normalizedPair} on primary endpoint`);
+      } else {
+        return Array.isArray(tickers) ? tickers : [];
       }
-      return tickers;
-    } catch (error) {
-      this._handleError('getTicker', error);
+    } catch (primaryError) {
+      // 2. Try Secondary Public CoinDCX endpoint
+      try {
+        const fallbackRes = await this.client.get(`${this.publicBaseUrl}/exchange/ticker`);
+        const tickers = fallbackRes.data;
+        if (normalizedPair) {
+          const match = Array.isArray(tickers) ? tickers.find((t) => t.market === normalizedPair || t.market === pair) : null;
+          if (match) return match;
+          throw new Error(`Ticker not found for ${normalizedPair} on secondary endpoint`);
+        } else {
+          return Array.isArray(tickers) ? tickers : [];
+        }
+      } catch (secondaryError) {
+        // 3. Fallback to Binance public ticker if USDT pair (Real live exchange price)
+        if (normalizedPair && (normalizedPair.endsWith('USDT') || normalizedPair.endsWith('BUSD'))) {
+          try {
+            const binanceRes = await this.client.get(
+              `https://data-api.binance.vision/api/v3/ticker/24hr?symbol=${normalizedPair}`
+            );
+            const b = binanceRes.data;
+            if (b && b.lastPrice) {
+              return {
+                market: normalizedPair,
+                last_price: b.lastPrice,
+                change_24_hour: b.priceChangePercent,
+                high: b.highPrice,
+                low: b.lowPrice,
+                volume: b.volume,
+                isFallback: true,
+                isSyntheticFallback: false,
+                source: 'binance_mirror',
+              };
+            }
+          } catch (binanceErr) {
+            // pass through to error handler
+          }
+        }
+        // 4. Return mock synthetic fallback object (MUST be rejected by tradingBot)
+        if (normalizedPair) {
+          return {
+            market: normalizedPair,
+            last_price: '85000.00',
+            change_24_hour: '0.00',
+            high: '85000.00',
+            low: '85000.00',
+            volume: '0.00',
+            isFallback: true,
+            isSyntheticFallback: true,
+            isFakePrice: true,
+            source: 'synthetic_mock',
+          };
+        }
+        this._handleError('getTicker', primaryError);
+      }
     }
   }
 
@@ -131,16 +185,42 @@ class CoinDCXService {
    * @param {Object} params - { pair, interval, limit, startTime, endTime }
    */
   async getCandles({ pair = 'B-BTC_USDT', interval = '1m', limit = 100 } = {}) {
+    const allowedIntervals = ['1m', '15m', '1h', '1d'];
+    const safeInterval = allowedIntervals.includes(interval) ? interval : '1m';
+
     try {
       const response = await this.client.get(`${this.publicBaseUrl}/market_data/candles`, {
-        params: { pair, interval, limit },
+        params: { pair, interval: safeInterval, limit },
       });
-      // Response is usually array of { open, high, low, close, volume, time }
-      // Sorted chronologically oldest to newest for indicator analysis
       const candles = Array.isArray(response.data) ? response.data : [];
-      return candles.slice().reverse();
+      if (candles.length > 0) {
+        return candles.slice().reverse();
+      }
+      throw new Error(`Primary endpoint returned empty candle array for ${pair}`);
     } catch (error) {
-      this._handleError('getCandles', error);
+      // Robust fallback to Binance klines for USDT pairs if CoinDCX endpoint times out
+      const cleanPair = pair.replace(/^B-|^I-/, '').replace(/_/g, '');
+      if (cleanPair.endsWith('USDT')) {
+        try {
+          const binanceInterval = interval || '1m';
+          const binanceUrl = `https://data-api.binance.vision/api/v3/klines?symbol=${cleanPair}&interval=${binanceInterval}&limit=${limit}`;
+          const binanceRes = await this.client.get(binanceUrl);
+          if (Array.isArray(binanceRes.data) && binanceRes.data.length > 0) {
+            return binanceRes.data.map((k) => ({
+              time: k[0],
+              open: parseFloat(k[1]),
+              high: parseFloat(k[2]),
+              low: parseFloat(k[3]),
+              close: parseFloat(k[4]),
+              volume: parseFloat(k[5]),
+            }));
+          }
+        } catch (bErr) {
+          // ignore fallback error
+        }
+      }
+      // Never return undefined; return empty array so UI routes don't crash
+      return [];
     }
   }
 
@@ -188,6 +268,10 @@ class CoinDCXService {
         body.client_order_id = orderData.client_order_id;
       }
 
+      if (orderData.leverage && orderData.leverage > 1) {
+        body.leverage = parseInt(orderData.leverage, 10);
+      }
+
       const headers = this.getAuthHeaders(body);
       const response = await this.client.post(
         `${this.apiBaseUrl}/exchange/v1/orders/create`,
@@ -197,6 +281,66 @@ class CoinDCXService {
       return response.data;
     } catch (error) {
       this._handleError('createOrder', error);
+    }
+  }
+
+  /**
+   * PRIVATE: Submits a derivatives/futures order with leverage to CoinDCX.
+   * Endpoint: POST https://api.coindcx.com/exchange/v1/derivatives/futures/orders/create
+   * @param {Object} orderData - { side, pair, order_type, price, total_quantity, leverage, client_order_id }
+   */
+  async createFuturesOrder(orderData) {
+    try {
+      const body = {
+        side: orderData.side,
+        pair: orderData.pair || orderData.market,
+        order_type: orderData.order_type || 'market_order',
+        total_quantity: orderData.total_quantity,
+        leverage: parseInt(orderData.leverage, 10) || 1,
+        timestamp: Date.now(),
+      };
+
+      if (orderData.price && orderData.order_type !== 'market_order') {
+        body.price = orderData.price;
+      }
+
+      if (orderData.client_order_id) {
+        body.client_order_id = orderData.client_order_id;
+      }
+
+      const headers = this.getAuthHeaders(body);
+      const response = await this.client.post(
+        `${this.apiBaseUrl}/exchange/v1/derivatives/futures/orders/create`,
+        body,
+        { headers }
+      );
+      return response.data;
+    } catch (error) {
+      this._handleError('createFuturesOrder', error);
+    }
+  }
+
+  /**
+   * PRIVATE: Updates user leverage on CoinDCX derivatives/futures market.
+   * Endpoint: POST https://api.coindcx.com/exchange/v1/derivatives/futures/positions/create_leverage
+   */
+  async setLeverage(pair, leverage = 1) {
+    try {
+      const body = {
+        pair,
+        leverage: parseInt(leverage, 10) || 1,
+        timestamp: Date.now(),
+      };
+      const headers = this.getAuthHeaders(body);
+      const response = await this.client.post(
+        `${this.apiBaseUrl}/exchange/v1/derivatives/futures/positions/create_leverage`,
+        body,
+        { headers }
+      );
+      return response.data;
+    } catch (error) {
+      console.warn(`[COINDCX] setLeverage blip: ${error.message}`);
+      return null;
     }
   }
 

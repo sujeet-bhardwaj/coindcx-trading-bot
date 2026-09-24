@@ -92,13 +92,26 @@ export default function LogConsole({ logs = [], onClearLogs }) {
               ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
               : '--:--:--';
 
+            const is3M = item.message?.includes('3M SCALP');
             return (
-              <div key={item.id} style={{ display: 'flex', gap: '10px', alignItems: 'baseline', lineHeight: 1.4 }}>
+              <div
+                key={item.id}
+                style={{
+                  display: 'flex',
+                  gap: '10px',
+                  alignItems: 'baseline',
+                  lineHeight: 1.4,
+                  background: is3M ? 'rgba(234, 179, 8, 0.08)' : 'transparent',
+                  padding: is3M ? '2px 6px' : '0',
+                  borderRadius: is3M ? '4px' : '0',
+                  borderLeft: is3M ? '3px solid #facc15' : 'none',
+                }}
+              >
                 <span style={{ color: 'var(--text-dim)', flexShrink: 0 }}>[{timeStr}]</span>
                 <span
                   style={{
-                    color: style.color,
-                    background: style.bg,
+                    color: is3M ? '#fde047' : style.color,
+                    background: is3M ? 'rgba(234, 179, 8, 0.2)' : style.bg,
                     padding: '1px 6px',
                     borderRadius: '4px',
                     fontWeight: '700',
@@ -106,9 +119,9 @@ export default function LogConsole({ logs = [], onClearLogs }) {
                     flexShrink: 0,
                   }}
                 >
-                  {item.type?.toUpperCase()}
+                  {is3M ? '⚡ 3M SCALP' : item.type?.toUpperCase()}
                 </span>
-                <span style={{ color: 'var(--text-main)', wordBreak: 'break-word' }}>
+                <span style={{ color: is3M ? '#fef08a' : 'var(--text-main)', wordBreak: 'break-word', fontWeight: is3M ? '600' : 'normal' }}>
                   {item.message}
                 </span>
               </div>

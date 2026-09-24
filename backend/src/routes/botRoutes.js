@@ -1,13 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const botController = require('../controllers/botController');
+const authMiddleware = require('../middleware/authMiddleware');
 
+// Public read endpoints (used by frontend dashboard)
 router.get('/status', botController.getStatus);
-router.post('/start', botController.startBot);
-router.post('/stop', botController.stopBot);
-router.post('/emergency-stop', botController.emergencyStop);
-router.post('/reset-emergency-stop', botController.resetEmergencyStop);
 router.get('/settings', botController.getSettings);
-router.patch('/settings', botController.updateSettings);
+
+// Authenticated bot control & mutation endpoints
+router.post('/start', authMiddleware, botController.startBot);
+router.post('/stop', authMiddleware, botController.stopBot);
+router.post('/emergency-stop', authMiddleware, botController.emergencyStop);
+router.post('/reset-emergency-stop', authMiddleware, botController.resetEmergencyStop);
+router.patch('/settings', authMiddleware, botController.updateSettings);
+router.post('/simulate-trade', authMiddleware, botController.simulateTrade);
+router.post('/backtest', authMiddleware, botController.runBacktest);
 
 module.exports = router;

@@ -35,6 +35,14 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    leverage: {
+      type: Number,
+      default: 1,
+    },
+    margin: {
+      type: Number,
+      default: null,
+    },
     filledQuantity: {
       type: Number,
       default: 0,

@@ -5,18 +5,29 @@ let socket = null;
 export function getSocket() {
   if (!socket) {
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+    const API_SECRET_KEY = import.meta.env.VITE_API_SECRET_KEY || 'dev-secret-key';
+
     socket = io(BACKEND_URL || '/', {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 3000,
+      auth: {
+        token: API_SECRET_KEY,
+      },
     });
 
     socket.on('connect', () => {
       console.log('⚡ Socket.IO connected to backend:', socket.id);
     });
 
-    socket.on('disconnect', () => {
-      console.log('🔌 Socket.IO disconnected from backend');
+    socket.on('reconnect', (attempt) => {
+      console.log('🔄 Socket.IO reconnected to backend on attempt:', attempt);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('🔌 Socket.IO temporarily disconnected from backend:', reason);
     });
   }
   return socket;

@@ -24,6 +24,18 @@ const tradeSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    leverage: {
+      type: Number,
+      default: 1,
+    },
+    margin: {
+      type: Number,
+      default: null,
+    },
+    liquidationPrice: {
+      type: Number,
+      default: null,
+    },
     stopLoss: {
       type: Number,
       default: null,

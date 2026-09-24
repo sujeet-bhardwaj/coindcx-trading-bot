@@ -14,7 +14,8 @@
     "test:phase5": "node src/scripts/testPhase5.js",
     "test:phase6": "node src/scripts/testPhase6.js",
     "test:phase8": "node src/scripts/testPhase8.js",
-    "check": "node src/scripts/checkEverything.js"
+    "check": "node src/scripts/checkEverything.js",
+    "pnl:5m": "node src/scripts/show5MinPnL.js"
   },
   "keywords": [
     "coindcx",

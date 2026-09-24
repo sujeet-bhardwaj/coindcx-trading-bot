@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Square, AlertOctagon, RotateCcw, AlertCircle } from 'lucide-react';
+import { Play, Square, AlertOctagon, RotateCcw, AlertCircle, Zap } from 'lucide-react';
 import api from '../services/api';
 
 export default function GlobalControls({ botStatus, onActionSuccess }) {
@@ -74,10 +74,27 @@ export default function GlobalControls({ botStatus, onActionSuccess }) {
     }
   };
 
+  const handleSimulateTrade = async () => {
+    setLoading(true);
+    try {
+      const res = await api.simulateTrade();
+      if (res.success) {
+        showFeedback(res.message || '⚡ Demo trade executed! Balance & P&L updated.');
+        if (onActionSuccess) onActionSuccess();
+      } else {
+        showFeedback(res.message || 'Simulation failed', true);
+      }
+    } catch (err) {
+      showFeedback(err.message, true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="glass-panel" style={{ padding: '18px 24px', marginBottom: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Global Commands:
           </span>
@@ -100,6 +117,17 @@ export default function GlobalControls({ botStatus, onActionSuccess }) {
             onClick={handleStop}
           >
             <Square size={16} /> STOP BOT
+          </button>
+
+          {/* SIMULATE TEST TRADE */}
+          <button
+            id="btn-simulate-trade"
+            className="btn btn-simulate"
+            disabled={loading || isEmergency}
+            onClick={handleSimulateTrade}
+            title="Instant paper trade execution to demonstrate balance & P&L updates"
+          >
+            <Zap size={16} /> SIMULATE TEST TRADE
           </button>
 
           {/* EMERGENCY STOP */}

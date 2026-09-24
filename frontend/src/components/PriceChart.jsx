@@ -10,11 +10,16 @@ import {
   Legend,
 } from 'recharts';
 
-export default function PriceChart({ candles = [], pair = 'BTCUSDT' }) {
+export default function PriceChart({
+  candles = [],
+  pair = 'BTCUSDT',
+  interval = '5m',
+  onIntervalChange,
+}) {
   if (!candles || candles.length === 0) {
     return (
       <div className="glass-panel" style={{ padding: '24px', height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'var(--text-dim)' }}>Loading market candles for {pair}...</span>
+        <span style={{ color: 'var(--text-dim)' }}>Loading market candles ({interval}) for {pair}...</span>
       </div>
     );
   }
@@ -49,12 +54,41 @@ export default function PriceChart({ candles = [], pair = 'BTCUSDT' }) {
   const domainMin = Math.floor(minPrice - padding);
   const domainMax = Math.ceil(maxPrice + padding);
 
+  const intervals = ['1m', '5m', '15m', '1h'];
+
   return (
     <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ fontSize: '1.05rem', fontWeight: '700' }}>{pair} Price & Strategy Indicators</h2>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>1-Minute Candles with Fast EMA (20) & Slow EMA (50)</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: '700' }}>{pair} Price & Strategy Indicators</h2>
+            {/* Timeframe selector buttons */}
+            <div style={{ display: 'inline-flex', background: 'rgba(255,255,255,0.06)', borderRadius: '6px', padding: '2px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              {intervals.map((int) => (
+                <button
+                  key={int}
+                  type="button"
+                  onClick={() => onIntervalChange && onIntervalChange(int)}
+                  style={{
+                    background: interval === int ? 'var(--accent-cyan)' : 'transparent',
+                    color: interval === int ? '#0f172a' : 'var(--text-dim)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '2px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  {int.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+            {interval === '5m' ? '5-Minute' : interval === '1m' ? '1-Minute' : interval === '15m' ? '15-Minute' : '1-Hour'} Candles with Fast EMA (20) & Slow EMA (50)
+          </p>
         </div>
 
         <div style={{ display: 'flex', gap: '14px', fontSize: '0.78rem' }}>

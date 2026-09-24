@@ -21,6 +21,7 @@ export default function App() {
   const [trades, setTrades] = useState([]);
   const [logs, setLogs] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [selectedInterval, setSelectedInterval] = useState('5m');
 
   // Load Initial Market Data & Pairs
   const loadInitialData = useCallback(async () => {
@@ -43,12 +44,12 @@ export default function App() {
     }
   }, []);
 
-  // Fetch Market Ticker & Candles for Selected Pair
-  const loadPairData = useCallback(async (pair) => {
+  // Fetch Market Ticker & Candles for Selected Pair and Interval
+  const loadPairData = useCallback(async (pair, interval = selectedInterval) => {
     try {
       const [ticker, candleData] = await Promise.all([
         api.getTicker(pair),
-        api.getCandles(pair, 40),
+        api.getCandles(pair, 40, interval),
       ]);
       setTickerData(ticker);
       if (ticker?.last_price) {
@@ -58,7 +59,7 @@ export default function App() {
     } catch (err) {
       console.warn(`Pair data fetch error for ${pair}:`, err.message);
     }
-  }, []);
+  }, [selectedInterval]);
 
   // Socket.IO Real-Time Subscriptions
   useEffect(() => {
@@ -87,11 +88,24 @@ export default function App() {
 
     const handleBotLog = (logEntry) => {
       setLogs((prev) => [logEntry, ...prev.slice(0, 99)]);
-      // If a trade occurred, refresh orders & trades
+      // If a trade occurred, refresh orders, trades & full bot status
       if (logEntry.type === 'trade') {
         api.getOrders().then(setOrders).catch(console.warn);
         api.getTrades().then(setTrades).catch(console.warn);
+        api.getBotStatus().then((s) => {
+          setBotStatus(s);
+          if (s?.currentPrice) setCurrentPrice(s.currentPrice);
+        }).catch(console.warn);
       }
+    };
+
+    const handleTradeEvent = () => {
+      api.getOrders().then(setOrders).catch(console.warn);
+      api.getTrades().then(setTrades).catch(console.warn);
+      api.getBotStatus().then((s) => {
+        setBotStatus(s);
+        if (s?.currentPrice) setCurrentPrice(s.currentPrice);
+      }).catch(console.warn);
     };
 
     socket.on('connect', handleConnect);
@@ -99,6 +113,7 @@ export default function App() {
     socket.on('bot_status', handleBotStatus);
     socket.on('price_tick', handlePriceTick);
     socket.on('bot_log', handleBotLog);
+    socket.on('trade', handleTradeEvent);
 
     if (socket.connected) {
       setIsConnected(true);
@@ -110,6 +125,7 @@ export default function App() {
       socket.off('bot_status', handleBotStatus);
       socket.off('price_tick', handlePriceTick);
       socket.off('bot_log', handleBotLog);
+      socket.off('trade', handleTradeEvent);
     };
   }, [selectedPair]);
 
@@ -142,16 +158,30 @@ export default function App() {
     setSelectedPair(newPair);
     try {
       await api.updateSettings({ pair: newPair });
-      loadPairData(newPair);
+      loadPairData(newPair, selectedInterval);
     } catch (err) {
       console.error('Failed to update pair in bot settings:', err.message);
     }
   };
 
+  const handleIntervalChange = (newInterval) => {
+    setSelectedInterval(newInterval);
+    loadPairData(selectedPair, newInterval);
+  };
+
   const handleRefresh = () => {
     loadInitialData();
-    loadPairData(selectedPair);
+    loadPairData(selectedPair, selectedInterval);
   };
+
+  // Calculate 5-minute trade stats
+  const now = Date.now();
+  const fiveMinutesAgo = now - 5 * 60 * 1000;
+  const recent5mTrades = trades.filter((t) => {
+    const closedTime = new Date(t.closedAt || t.createdAt).getTime();
+    return closedTime >= fiveMinutesAgo;
+  });
+  const pnl5m = recent5mTrades.reduce((acc, t) => acc + parseFloat(t.profit || 0), 0);
 
   return (
     <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 20px 48px' }}>
@@ -161,7 +191,7 @@ export default function App() {
       {/* 2. Global Action Controls (Start / Stop / Emergency Stop) */}
       <GlobalControls botStatus={botStatus} onActionSuccess={handleRefresh} />
 
-      {/* 3. Top Metrics Cards (Price, Balance, Daily PnL, Active Position, Signal) */}
+      {/* 3. Top Metrics Cards (Price, Balance, Daily PnL, 5-Min PnL, Active Position, Signal) */}
       <MetricsCards
         botStatus={botStatus}
         pairs={pairs}
@@ -169,10 +199,19 @@ export default function App() {
         onPairChange={handlePairChange}
         currentPrice={currentPrice}
         tickerData={tickerData}
+        pnl5m={pnl5m}
+        recent5mTradeCount={recent5mTrades.length}
+        orders={orders}
+        trades={trades}
       />
 
       {/* 4. Interactive Live Price & Indicator Chart */}
-      <PriceChart candles={candles} pair={selectedPair} />
+      <PriceChart
+        candles={candles}
+        pair={selectedPair}
+        interval={selectedInterval}
+        onIntervalChange={handleIntervalChange}
+      />
 
       {/* 5. Strategy & Risk Parameters */}
       <StrategySettings botStatus={botStatus} onSettingsUpdated={handleRefresh} />

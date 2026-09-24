@@ -1,12 +1,14 @@
 const config = require('../config/env');
 const { updateVirtualBalance } = require('../controllers/accountController');
+const PaperAccount = require('../models/PaperAccount');
+const { getIsConnected } = require('../config/db');
 
 class PaperTradingEngine {
   constructor(options = {}) {
     this.initialBalanceUSDT = options.initialBalanceUSDT || config.paper.initialBalanceUSDT;
     this.initialBalanceINR = options.initialBalanceINR || config.paper.initialBalanceINR;
-    this.feePercent = options.feePercent || config.paper.feePercent; // default 0.1%
-    this.slippagePercent = options.slippagePercent || 0.02; // 0.02% simulated slippage
+    this.feePercent = options.feePercent !== undefined ? options.feePercent : (config.paper.feePercent || 0.1);
+    this.slippagePercent = options.slippagePercent !== undefined ? options.slippagePercent : 0.02;
 
     // Virtual Wallets
     this.balances = {
@@ -24,6 +26,58 @@ class PaperTradingEngine {
     this.dailyLossResetDate = new Date().toDateString();
 
     this._syncBalances();
+  }
+
+  /**
+   * Hydrates state from MongoDB on server startup if available
+   */
+  async initialize() {
+    try {
+      if (getIsConnected()) {
+        const savedAccount = await PaperAccount.findOne();
+        if (savedAccount) {
+          if (savedAccount.balances) {
+            this.balances = { ...this.balances, ...savedAccount.balances };
+          }
+          if (Array.isArray(savedAccount.positions)) {
+            this.positions = savedAccount.positions.map((p) => (p.toObject ? p.toObject() : p));
+          }
+          if (savedAccount.dailyRealizedPnL !== undefined) {
+            this.dailyRealizedPnL = savedAccount.dailyRealizedPnL;
+          }
+          if (savedAccount.dailyLossResetDate) {
+            this.dailyLossResetDate = savedAccount.dailyLossResetDate;
+          }
+          this._checkDailyReset();
+          this._syncBalances();
+          console.log(`[PAPER] Restored state from DB: ${this.positions.length} position(s), Balance: $${this.balances.USDT?.toFixed(2)} USDT`);
+        }
+      }
+    } catch (err) {
+      console.warn('[PAPER] Error restoring state from DB:', err.message);
+    }
+  }
+
+  /**
+   * Persists balances, open positions and daily PnL to MongoDB
+   */
+  async saveState() {
+    try {
+      if (getIsConnected()) {
+        await PaperAccount.findOneAndUpdate(
+          {},
+          {
+            balances: this.balances,
+            positions: this.positions,
+            dailyRealizedPnL: this.dailyRealizedPnL,
+            dailyLossResetDate: this.dailyLossResetDate,
+          },
+          { upsert: true, new: true }
+        );
+      }
+    } catch (err) {
+      console.warn('[PAPER] Could not save paper state to DB:', err.message);
+    }
   }
 
   _syncBalances() {
@@ -57,28 +111,31 @@ class PaperTradingEngine {
    */
   async executeBuy({
     pair,
-    amountQuote, // e.g. 50 USDT or 5000 INR
+    amountQuote, // e.g. 50 USDT or 5000 INR (Margin allocated)
     currentPrice,
     stopLossPercent = config.stopLossPercent,
     takeProfitPercent = config.takeProfitPercent,
     strategy = 'EMA_RSI',
+    leverage = 1,
   }) {
     this._checkDailyReset();
 
+    const lev = Math.max(1, parseInt(leverage, 10) || 1);
     const { base, quote } = this.getQuoteAndBase(pair);
     const availableQuote = this.balances[quote] || 0;
 
     if (amountQuote > availableQuote) {
-      throw new Error(`Insufficient simulated ${quote} balance: Available ${availableQuote.toFixed(2)}, requested ${amountQuote}`);
+      throw new Error(`Insufficient simulated ${quote} balance: Available ${availableQuote.toFixed(2)}, requested margin ${amountQuote}`);
     }
 
     // Apply realistic slippage to buy price (slightly higher execution)
     const executionPrice = currentPrice * (1 + this.slippagePercent / 100);
-    const fee = (amountQuote * this.feePercent) / 100;
-    const netQuote = amountQuote - fee;
-    const quantity = netQuote / executionPrice;
+    const notionalValue = amountQuote * lev;
+    const fee = (notionalValue * this.feePercent) / 100;
+    const netNotional = notionalValue - fee;
+    const quantity = netNotional / executionPrice;
 
-    // Deduct quote currency, add base currency
+    // Deduct margin from quote currency, track base currency
     this.balances[quote] -= amountQuote;
     this.balances[base] = (this.balances[base] || 0) + quantity;
     this._syncBalances();
@@ -87,8 +144,11 @@ class PaperTradingEngine {
     const stopLossPrice = executionPrice * (1 - stopLossPercent / 100);
     const takeProfitPrice = executionPrice * (1 + takeProfitPercent / 100);
 
+    // Calculate Liquidation Price for leveraged positions (> 1x) with 5% maintenance buffer
+    const liquidationPrice = lev > 1 ? executionPrice * (1 - (0.95 / lev)) : null;
+
     const orderId = `PAPER_ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const positionId = `POS_${Date.now()}`;
+    const positionId = `POS_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
     const order = {
       orderId,
@@ -98,7 +158,10 @@ class PaperTradingEngine {
       type: 'market_order',
       price: executionPrice,
       quantity,
-      costQuote: amountQuote,
+      costQuote: amountQuote, // Margin pledged
+      margin: amountQuote,
+      notionalValue,
+      leverage: lev,
       fee,
       status: 'filled',
       mode: 'PAPER_TRADING',
@@ -112,21 +175,45 @@ class PaperTradingEngine {
       side: 'buy',
       entryPrice: executionPrice,
       quantity,
+      margin: amountQuote,
+      leverage: lev,
+      notionalValue,
+      liquidationPrice,
       stopLossPrice,
       takeProfitPrice,
       stopLossPercent,
       takeProfitPercent,
+      effectiveStopLossPrice: stopLossPrice,
+      peakProfitPercent: 0,
+      trailingActive: false,
       strategy,
       entryFee: fee,
       createdAt: new Date(),
     };
     this.positions.push(position);
 
+    await this.saveState();
+
     return {
       order,
       position,
       balances: { ...this.balances },
     };
+  }
+
+  /**
+   * Update trailing stop-loss / take-profit state for an active position
+   */
+  async updatePositionTrailing(positionId, updates = {}) {
+    const pos = this.positions.find((p) => p.positionId === positionId);
+    if (pos) {
+      if (updates.peakProfitPercent !== undefined) pos.peakProfitPercent = updates.peakProfitPercent;
+      if (updates.trailingActive !== undefined) pos.trailingActive = updates.trailingActive;
+      if (updates.effectiveStopLossPrice !== undefined) pos.effectiveStopLossPrice = updates.effectiveStopLossPrice;
+      await this.saveState();
+      return pos;
+    }
+    return null;
   }
 
   /**
@@ -159,6 +246,8 @@ class PaperTradingEngine {
     const sellQty = position ? position.quantity : quantity;
     const entryPrice = position ? position.entryPrice : currentPrice;
     const entryFee = position ? position.entryFee : 0;
+    const lev = position ? (position.leverage || 1) : 1;
+    const margin = position ? (position.margin || (position.entryPrice * sellQty / lev)) : (entryPrice * sellQty);
 
     // Apply realistic slippage to sell price (slightly lower execution)
     const executionPrice = currentPrice * (1 - this.slippagePercent / 100);
@@ -166,21 +255,29 @@ class PaperTradingEngine {
     const exitFee = (grossQuote * this.feePercent) / 100;
     const netQuote = grossQuote - exitFee;
 
-    // Update balances
-    this.balances[base] = Math.max(0, (this.balances[base] || 0) - sellQty);
-    this.balances[quote] = (this.balances[quote] || 0) + netQuote;
-    this._syncBalances();
-
     // Calculate Realized P&L
     const totalFees = entryFee + exitFee;
     const grossPnL = (executionPrice - entryPrice) * sellQty;
     const netPnL = grossPnL - totalFees;
-    const pnlPercent = ((executionPrice - entryPrice) / entryPrice) * 100;
+    // Leveraged PnL% reflects percentage return on invested margin
+    const pnlPercent = margin > 0 ? (netPnL / margin) * 100 : (((executionPrice - entryPrice) / entryPrice) * 100 * lev);
+
+    // Update balances
+    this.balances[base] = Math.max(0, (this.balances[base] || 0) - sellQty);
+    if (lev > 1) {
+      // Leveraged return: pledged margin + net realized PnL
+      const returnedCapital = Math.max(0, margin + netPnL);
+      this.balances[quote] = (this.balances[quote] || 0) + returnedCapital;
+    } else {
+      // 1x Spot return: net proceeds from sale
+      this.balances[quote] = (this.balances[quote] || 0) + netQuote;
+    }
+    this._syncBalances();
 
     this.dailyRealizedPnL += netPnL;
 
     const orderId = `PAPER_ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const tradeId = `TRADE_${Date.now()}`;
+    const tradeId = `TRADE_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
     const order = {
       orderId,
@@ -191,6 +288,8 @@ class PaperTradingEngine {
       price: executionPrice,
       quantity: sellQty,
       proceedsQuote: netQuote,
+      margin,
+      leverage: lev,
       fee: exitFee,
       status: 'filled',
       mode: 'PAPER_TRADING',
@@ -205,6 +304,9 @@ class PaperTradingEngine {
       entryPrice,
       exitPrice: executionPrice,
       quantity: sellQty,
+      margin,
+      leverage: lev,
+      liquidationPrice: position ? position.liquidationPrice : null,
       grossPnL,
       profit: netPnL,
       pnlPercent,
@@ -223,6 +325,8 @@ class PaperTradingEngine {
       this.positions.splice(targetPosIndex, 1);
     }
 
+    await this.saveState();
+
     return {
       order,
       trade,
@@ -238,10 +342,14 @@ class PaperTradingEngine {
   getPositionsWithPnL(currentPriceMap = {}) {
     return this.positions.map((pos) => {
       const currentPrice = currentPriceMap[pos.pair] || pos.entryPrice;
+      const lev = pos.leverage || 1;
       const unrealizedPnL = (currentPrice - pos.entryPrice) * pos.quantity;
-      const unrealizedPnLPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+      const unrealizedPnLPercent = pos.margin && pos.margin > 0
+        ? (unrealizedPnL / pos.margin) * 100
+        : (pos.entryPrice > 0 ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100 * lev : 0);
       return {
         ...pos,
+        leverage: lev,
         currentPrice,
         unrealizedPnL,
         unrealizedPnLPercent,
@@ -266,7 +374,7 @@ class PaperTradingEngine {
     return this.dailyRealizedPnL;
   }
 
-  reset() {
+  async reset() {
     this.balances = {
       USDT: this.initialBalanceUSDT,
       INR: this.initialBalanceINR,
@@ -278,6 +386,7 @@ class PaperTradingEngine {
     this.orders = [];
     this.dailyRealizedPnL = 0;
     this._syncBalances();
+    await this.saveState();
   }
 }
 

@@ -5,7 +5,7 @@ const helmet = require('helmet');
 const config = require('./config/env');
 const { connectDB } = require('./config/db');
 const tradingBot = require('./bot/tradingBot');
-const websocketService = require('./services/websocketService');
+const websocketService = require('./services/websocketService'); // Auto-reloaded for 15m cycle timer and enhanced trade history
 
 const accountRoutes = require('./routes/accountRoutes');
 const marketRoutes = require('./routes/marketRoutes');
@@ -19,9 +19,9 @@ const server = http.createServer(app);
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(
   cors({
-    origin: '*',
+    origin: config.corsOrigin === '*' ? '*' : config.corsOrigin.split(',').map((o) => o.trim()),
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
   })
 );
 app.use(express.json());
@@ -96,14 +96,31 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Prevent process crash from unhandled exceptions or rejected promises
+process.on('uncaughtException', (err) => {
+  console.error('💥 [UNCAUGHT EXCEPTION]:', err.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.warn('⚠️ [UNHANDLED REJECTION]:', reason?.message || reason);
+});
+
 // Start Server and Database
 async function startServer() {
   await connectDB();
   await tradingBot.initialize();
   websocketService.initialize(server, tradingBot);
 
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${config.port} is already in use by another process. Please close it.`);
+    } else {
+      console.error('❌ Server network error:', err.message);
+    }
+  });
+
   if (process.env.NODE_ENV !== 'test') {
-    server.listen(config.port, () => {
+    server.listen(config.port, '0.0.0.0', () => {
       console.log('====================================================');
       console.log(`🚀 CoinDCX Trading Bot Backend running on port ${config.port}`);
       console.log(`🛡️  Current Mode: [ ${config.tradingMode} ]`);

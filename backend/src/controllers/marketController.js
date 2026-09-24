@@ -49,7 +49,8 @@ async function getCandles(req, res, next) {
     const interval = req.query.interval || '1m';
     const limit = parseInt(req.query.limit, 10) || 50;
 
-    const candles = await marketService.getCandles(pair, interval, limit);
+    const rawCandles = await marketService.getCandles(pair, interval, limit);
+    const candles = Array.isArray(rawCandles) ? rawCandles : [];
     return res.json({
       success: true,
       pair,
