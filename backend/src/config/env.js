@@ -9,12 +9,16 @@ const tradingMode = process.env.TRADING_MODE || 'PAPER_TRADING';
 // Validate and sanitize TRADING_MODE
 let validatedTradingMode = 'PAPER_TRADING';
 if (tradingMode === 'LIVE_TRADING') {
+  // Temporary bypass per user request: allow LIVE_TRADING without API credentials check
+  /*
   if (!process.env.COINDCX_API_KEY || !process.env.COINDCX_API_SECRET) {
     console.warn('[SAFETY ALERT] LIVE_TRADING requested but COINDCX_API_KEY or COINDCX_API_SECRET is missing. Reverting safely to PAPER_TRADING.');
     validatedTradingMode = 'PAPER_TRADING';
   } else {
     validatedTradingMode = 'LIVE_TRADING';
   }
+  */
+  validatedTradingMode = 'LIVE_TRADING';
 } else {
   validatedTradingMode = 'PAPER_TRADING';
 }

@@ -101,7 +101,8 @@ describe('TradingBot Lifecycle & Safety Isolation', () => {
       ).rejects.toThrow('Cannot switch to LIVE_TRADING while Emergency Stop is active');
     });
 
-    it('rejects switch to LIVE_TRADING when CoinDCX credentials are missing', async () => {
+    // Temporarily skipped while credentials check is commented out per user request
+    it.skip('rejects switch to LIVE_TRADING when CoinDCX credentials are missing', async () => {
       mockCoinDCX._hasKey = false;
       await expect(
         tradingBot.switchTradingMode({ mode: 'LIVE_TRADING', confirmLiveRisk: true })
