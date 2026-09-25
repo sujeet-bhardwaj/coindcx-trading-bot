@@ -981,9 +981,10 @@ class TradingBot {
     // Execute in PAPER_TRADING
     if (config.tradingMode === 'PAPER_TRADING') {
       try {
+        const marginQuote = this.leverage > 1 ? parseFloat((tradeAmountQuote / this.leverage).toFixed(2)) : tradeAmountQuote;
         const buyExecution = await this.paperEngine.executeBuy({
           pair: this.pair,
-          amountQuote: tradeAmountQuote,
+          amountQuote: marginQuote,
           leverage: this.leverage,
           currentPrice: this.currentPrice,
           stopLossPercent: this.riskManager.maxLossPercent,
@@ -1010,7 +1011,7 @@ class TradingBot {
           price: buyExecution.position.entryPrice,
           quantity: buyExecution.position.quantity,
           leverage: this.leverage,
-          margin: tradeAmountQuote,
+          margin: marginQuote,
           orderValue: buyExecution.position.entryPrice * buyExecution.position.quantity,
           pair: this.pair,
           reason: signalResult.reason,
@@ -1021,7 +1022,7 @@ class TradingBot {
         const is3M = this.strategy.name === 'SCALPER_3M';
         const is15M = this.strategy.name === 'SCALPER_15M' || this.strategy.name === 'EMA_RSI';
         const tag = is3M ? '⚡ [3M SCALP]' : (is15M ? '⚡ [15M SCALP]' : '✅');
-        const levTag = this.leverage > 1 ? ` [${this.leverage}x Leverage | Margin: $${tradeAmountQuote.toFixed(2)}]` : '';
+        const levTag = this.leverage > 1 ? ` [${this.leverage}x Leverage | Margin: $${marginQuote.toFixed(2)}]` : ' [1x Spot]';
         this.log(
           `${tag} BOUGHT at ${timeStr} — ${buyExecution.position.quantity.toFixed(6)} ${this.pair} @ $${buyExecution.position.entryPrice.toFixed(2)}${levTag} | Reason: ${signalResult.reason}`,
           'trade'
@@ -1114,9 +1115,10 @@ class TradingBot {
     }
 
     const effectiveOrderValue = quantity * this.currentPrice;
+    const requiredMargin = this.leverage > 1 ? parseFloat((effectiveOrderValue / this.leverage).toFixed(2)) : effectiveOrderValue;
 
-    if (availableBalance < effectiveOrderValue) {
-      throw new Error(`Insufficient real exchange balance: Available ₹${availableBalance.toFixed(2)} ${quoteCurrency}, required ₹${effectiveOrderValue.toFixed(2)} ${quoteCurrency}`);
+    if (availableBalance < requiredMargin) {
+      throw new Error(`Insufficient real exchange balance: Available ₹${availableBalance.toFixed(2)} ${quoteCurrency}, required margin ₹${requiredMargin.toFixed(2)} ${quoteCurrency} (${this.leverage}x leverage)`);
     }
 
     if (quantity < (marketDetails?.min_quantity || 0.00001)) {

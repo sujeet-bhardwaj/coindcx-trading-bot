@@ -123,15 +123,27 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
   const [backtestResult, setBacktestResult] = useState(null);
   const [backtestError, setBacktestError] = useState(null);
 
+  // Instant leverage auto-save feedback & edit protection
+  const [leverageAutoSaving, setLeverageAutoSaving] = useState(false);
+  const [leverageFeedback, setLeverageFeedback] = useState('');
+  const lastUserLeverageEditTimeRef = React.useRef(0);
+
   useEffect(() => {
     if (botStatus) {
       const activeStrat = botStatus.strategy || settings.strategy;
       const meta = STRATEGY_DEFINITIONS.find((s) => s.id === activeStrat) || STRATEGY_DEFINITIONS[0];
+
+      // Avoid overwriting leverage if user recently clicked/edited leverage within 4 seconds
+      const isRecentUserEdit = (Date.now() - lastUserLeverageEditTimeRef.current) < 4000;
+      const effectiveLeverage = isRecentUserEdit
+        ? settings.leverage
+        : (botStatus.leverage ?? botStatus.riskLimits?.leverage ?? settings.leverage ?? 5);
+
       setSettings((prev) => ({
         ...prev,
         strategy: activeStrat,
         tradeAmount: botStatus.tradeAmount || prev.tradeAmount,
-        leverage: botStatus.leverage ?? botStatus.riskLimits?.leverage ?? prev.leverage,
+        leverage: effectiveLeverage,
         evalIntervalMs: botStatus.evalIntervalMs || prev.evalIntervalMs,
         maxLossPercent: botStatus.riskLimits?.maxLossPercent ?? prev.maxLossPercent,
         profitLockLevels: botStatus.riskLimits?.profitLockLevels ?? prev.profitLockLevels,
@@ -147,12 +159,41 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
         pair: botStatus.pair || prev.pair,
         strategyName: activeStrat,
         interval: meta.timeframe, // Auto-sync interval to strategy timeframe (3m, 15m, 4h)
-        leverage: botStatus.leverage ?? prev.leverage,
+        leverage: effectiveLeverage,
         maxLossPercent: botStatus.riskLimits?.maxLossPercent ?? prev.maxLossPercent,
         profitLockLevels: botStatus.riskLimits?.profitLockLevels ?? prev.profitLockLevels,
       }));
     }
   }, [botStatus]);
+
+  const handleLeverageSelect = async (newLev, autoSave = true) => {
+    const val = Math.min(100, Math.max(1, parseInt(newLev, 10) || 1));
+    lastUserLeverageEditTimeRef.current = Date.now();
+
+    setSettings((prev) => ({
+      ...prev,
+      leverage: val,
+    }));
+    setBacktestConfig((prev) => ({
+      ...prev,
+      leverage: val,
+    }));
+
+    if (autoSave) {
+      setLeverageAutoSaving(true);
+      try {
+        await api.updateSettings({ leverage: val });
+        setLeverageFeedback(`⚡ ${val === 1 ? '1x Spot (Zero Leverage)' : `${val}x Leverage`} Active & Saved!`);
+        if (onSettingsUpdated) onSettingsUpdated();
+        setTimeout(() => setLeverageFeedback(''), 3000);
+      } catch (err) {
+        setLeverageFeedback(`⚠️ Failed to apply leverage: ${err.response?.data?.error || err.message}`);
+        setTimeout(() => setLeverageFeedback(''), 4000);
+      } finally {
+        setLeverageAutoSaving(false);
+      }
+    }
+  };
 
   const handleStrategySelect = (newStrategyId) => {
     const meta = STRATEGY_DEFINITIONS.find((s) => s.id === newStrategyId) || STRATEGY_DEFINITIONS[0];
@@ -180,6 +221,10 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
   const handleChange = (field, val) => {
     if (field === 'strategy') {
       handleStrategySelect(val);
+      return;
+    }
+    if (field === 'leverage') {
+      handleLeverageSelect(val, false);
       return;
     }
     setSettings((prev) => ({
@@ -472,6 +517,26 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
                 <span style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-bright)' }}>
                   Trading Leverage Multiplier (लिवरेज)
                 </span>
+                {leverageFeedback && (
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: '700',
+                      color: '#34d399',
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                    }}
+                  >
+                    {leverageFeedback}
+                  </span>
+                )}
+                {leverageAutoSaving && (
+                  <span style={{ fontSize: '0.7rem', color: '#fbbf24', fontStyle: 'italic' }}>
+                    Applying...
+                  </span>
+                )}
               </div>
               <span
                 style={{
@@ -507,16 +572,16 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
                 }}
               >
                 {settings.leverage === 1
-                  ? '1x Spot (Zero Leverage / Cash Margin)'
+                  ? '✓ 1x Spot (Zero Leverage / Cash Margin)'
                   : settings.leverage <= 5
-                  ? `${settings.leverage}x Conservative Margin`
+                  ? `✓ ${settings.leverage}x Active Margin (Live & Working)`
                   : settings.leverage <= 20
-                  ? `${settings.leverage}x Active Futures`
-                  : `⚠️ ${settings.leverage}x High Volatility Risk`}
+                  ? `✓ ${settings.leverage}x Active Futures Multiplier`
+                  : `⚠️ ${settings.leverage}x High Volatility Risk Multiplier`}
               </span>
             </div>
 
-            {/* Quick-Select Buttons */}
+            {/* Quick-Select Buttons: Click immediately activates & auto-saves to bot */}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
               {[1, 2, 3, 5, 10, 20, 25, 50, 75, 100].map((lev) => {
                 const isActive = (settings.leverage || 1) === lev;
@@ -524,7 +589,7 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
                   <button
                     key={lev}
                     type="button"
-                    onClick={() => handleChange('leverage', lev)}
+                    onClick={() => handleLeverageSelect(lev, true)}
                     style={{
                       padding: '5px 12px',
                       fontSize: '0.78rem',
@@ -553,7 +618,9 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
                   max="100"
                   step="1"
                   value={settings.leverage || 1}
-                  onChange={(e) => handleChange('leverage', e.target.value)}
+                  onChange={(e) => handleLeverageSelect(e.target.value, false)}
+                  onMouseUp={() => handleLeverageSelect(settings.leverage, true)}
+                  onTouchEnd={() => handleLeverageSelect(settings.leverage, true)}
                   style={{
                     width: '100%',
                     accentColor: '#f59e0b',
@@ -568,7 +635,14 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
                   max="100"
                   step="1"
                   value={settings.leverage || 1}
-                  onChange={(e) => handleChange('leverage', e.target.value)}
+                  onChange={(e) => handleLeverageSelect(e.target.value, false)}
+                  onBlur={() => handleLeverageSelect(settings.leverage, true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleLeverageSelect(settings.leverage, true);
+                    }
+                  }}
                   className="form-input"
                   style={{
                     width: '80px',
