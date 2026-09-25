@@ -45,7 +45,7 @@ class TradingBot {
   constructor() {
     this.marketService = new MarketService();
     this.coindcxService = new CoinDCXService();
-    this.strategy = strategyRegistry.get(config.defaultStrategy || 'TREND_4H');
+    this.strategy = strategyRegistry.get(config.defaultStrategy || 'TREND_PULLBACK_PRO');
     this.riskManager = riskManager;
     this.paperEngine = paperTradingEngine;
     this.orderService = orderService;
@@ -370,8 +370,13 @@ class TradingBot {
     }
 
     this.isRunning = true;
+    this.pauseNewEntries = false; // Reset pause flag on start
     this.cycleStartTime = Date.now(); // Start timing strictly when Start Bot is clicked
     this.riskManager.setBotEnabled(true);
+    this.riskManager.resetLossCooldown(); // Clear any stale loss cooldown
+    this.riskManager.resetTradeCooldown(); // Clear any stale trade cooldown
+    this.candleTracker.reset(); // Reset candle tracker for fresh cycle
+    this.orderStateMachine.reconcile(this.activePositions.length); // Ensure state machine matches open positions
     this.lastError = null;
     this.lastLoggedReason = null;
     this.tickCounter = 0;
@@ -499,6 +504,17 @@ class TradingBot {
         return;
       }
 
+      // Auto-reconcile order state machine if no open positions exist and not actively pending
+      if (this.activePositions.length === 0) {
+        const currentState = this.orderStateMachine.getState();
+        if (currentState !== OrderStates.NO_POSITION) {
+          const timeout = this.orderStateMachine.checkOrderTimeout();
+          if (currentState !== OrderStates.BUY_PENDING || timeout.isTimedOut) {
+            this.orderStateMachine.reconcile(0);
+          }
+        }
+      }
+
       // 1. Fetch current ticker price with cached price fallback
       let ticker = null;
       try {
@@ -553,8 +569,9 @@ class TradingBot {
       } else if (this.strategy?.name === 'TREND_4H' || this.strategy?.name === 'SWING_4H') {
         candleInterval = '4h';
       }
+      const candleLimit = (this.strategy?.name === 'TREND_PULLBACK_PRO' || this.strategy?.name === 'TREND_4H') ? 200 : 100;
       try {
-        rawCandles = await this.marketService.getCandles(this.pair, candleInterval, 60);
+        rawCandles = await this.marketService.getCandles(this.pair, candleInterval, candleLimit);
       } catch (candleErr) {
         console.warn(`[BOT] Candles fetch blip: ${candleErr.message}`);
       }
@@ -607,9 +624,9 @@ class TradingBot {
         return;
       }
 
-      // Duplicate Candle Protection (Rule #41)
+      // Duplicate Candle Protection (Rule #41: Prevents double entries while a position is already open)
       const latestCompletedCandle = candles[candles.length - 1];
-      const candleCheck = this.candleTracker.checkCandle(latestCompletedCandle);
+      const candleCheck = this.candleTracker.checkCandle(latestCompletedCandle, this.activePositions.length > 0);
 
       // 4. Generate Trading Signal
       const signalResult = this.strategy.generateSignal({
@@ -639,7 +656,7 @@ class TradingBot {
             indicators: signalResult.indicators,
           };
           this._handleHoldStatusLog(this.lastSignal);
-        } else if (!candleCheck.canProcess) {
+        } else if (!candleCheck.canProcess && this.activePositions.length > 0) {
           this.lastSignal = { signal: 'WAIT', reason: candleCheck.reason, indicators: signalResult.indicators };
           this._handleHoldStatusLog(this.lastSignal);
         } else {
@@ -802,6 +819,8 @@ class TradingBot {
       profitLockStepAfterLast: this.riskManager.profitLockStepAfterLast,
       lockBufferPercent: this.riskManager.lockBufferPercent,
       breakevenTriggerPercent: this.riskManager.breakevenTriggerPercent,
+      feeAware: this.riskManager.feeAware !== undefined ? this.riskManager.feeAware : true,
+      feeDeductionPercent: this.riskManager.feeDeductionPercent !== undefined ? this.riskManager.feeDeductionPercent : 1.5,
     };
 
     const positions = [...this.activePositions];
@@ -1301,6 +1320,12 @@ class TradingBot {
         this.activePositions = this.activePositions.filter((p) => p.positionId !== position.positionId);
         if (this.activePositions.length === 0) {
           this._stopPositionMonitor();
+          this.orderStateMachine.reconcile(0);
+          this.candleTracker.reset();
+        }
+        if (config.tradingMode === 'PAPER_TRADING') {
+          this.riskManager.resetLossCooldown();
+          this.riskManager.resetTradeCooldown();
         }
         this.lastLoggedReason = null;
 
@@ -1382,6 +1407,14 @@ class TradingBot {
     // 1. If we have active tracked positions, close them immediately
     if (this.activePositions.length > 0) {
       await this._handleSellAllPositions(reason);
+      if (this.activePositions.length === 0) {
+        this.orderStateMachine.reconcile(0);
+        this.candleTracker.reset();
+        if (config.tradingMode === 'PAPER_TRADING') {
+          this.riskManager.resetLossCooldown();
+          this.riskManager.resetTradeCooldown();
+        }
+      }
       this._notifyStateChange('status_change');
       return {
         success: true,
@@ -1553,6 +1586,8 @@ class TradingBot {
     this.activePositions = this.activePositions.filter((p) => p.positionId !== position.positionId);
     if (this.activePositions.length === 0) {
       this._stopPositionMonitor();
+      this.orderStateMachine.reconcile(0);
+      this.candleTracker.reset();
     }
 
     if (getIsConnected()) {

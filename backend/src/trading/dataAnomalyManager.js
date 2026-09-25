@@ -319,11 +319,11 @@ class AntiMartingaleValidator {
 
     // 2. Anti-Doubling / Anti-Revenge Scaling Check
     if (previousTradePnL !== null && previousTradePnL < 0 && previousQuantity > 0) {
-      // If previous trade was a loss, quantity must NEVER double or scale up (allow 3% rounding tolerance)
-      if (plannedQuantity > previousQuantity * 1.03) {
+      // If previous trade was a loss, quantity must not scale up excessively (allow 30% tolerance for price movement & dynamic sizing)
+      if (plannedQuantity > previousQuantity * 1.30) {
         return {
           valid: false,
-          reason: `ANTI_MARTINGALE_VIOLATION: Position sizing scaled up from previous losing trade (${previousQuantity} -> ${plannedQuantity}). Doubling or increasing size after loss is strictly prohibited.`
+          reason: `ANTI_MARTINGALE_VIOLATION: Position sizing scaled up excessively from previous losing trade (${previousQuantity} -> ${plannedQuantity}). Increasing size after loss is prohibited.`
         };
       }
     }

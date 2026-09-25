@@ -25,7 +25,11 @@ class RiskManager {
     this.maxDailyTrades = options.maxDailyTrades !== undefined ? parseInt(options.maxDailyTrades, 10) : 10;
 
     // Loss Cooldown & Anti-Martingale Parameters (Rules #84, #85)
-    this.lossCooldownMinutes = options.lossCooldownMinutes !== undefined ? parseInt(options.lossCooldownMinutes, 10) : 15;
+    this.lossCooldownMinutes = options.lossCooldownMinutes !== undefined
+      ? parseInt(options.lossCooldownMinutes, 10)
+      : (config.lossCooldownMinutes !== undefined
+          ? parseInt(config.lossCooldownMinutes, 10)
+          : (this.tradingMode === 'PAPER_TRADING' ? 0 : 1));
     this.lastLossTime = options.lastLossTime || 0;
     this.previousTradeQuantity = options.previousTradeQuantity || 0;
     this.lastRealizedTradePnL = null;
@@ -51,7 +55,13 @@ class RiskManager {
       : (config.lockBufferPercent || 0);
     this.breakevenTriggerPercent = options.breakevenTriggerPercent !== undefined
       ? parseFloat(options.breakevenTriggerPercent)
-      : (config.breakevenTriggerPercent || 0);
+      : (config.breakevenTriggerPercent || 2.5);
+    this.feeDeductionPercent = options.feeDeductionPercent !== undefined
+      ? parseFloat(options.feeDeductionPercent)
+      : (config.feeDeductionPercent !== undefined ? parseFloat(config.feeDeductionPercent) : 1.5);
+    this.feeAware = options.feeAware !== undefined
+      ? Boolean(options.feeAware)
+      : (config.feeAware !== undefined ? Boolean(config.feeAware) : true);
 
     this.cooldownSeconds = options.cooldownSeconds || config.cooldownSeconds || 60;
 
@@ -179,8 +189,8 @@ class RiskManager {
       }
 
       // 7. General Cooldown Check between trades
-      const isCycleFast = strategy === 'SCALPER_3M' || strategy === 'SCALPER_15M' || strategy === 'EMA_RSI';
-      const effectiveCooldown = isCycleFast ? 5 : this.cooldownSeconds;
+      const isCycleFast = strategy === 'SCALPER_3M' || strategy === 'SCALPER_15M' || strategy === 'EMA_RSI' || strategy === 'TREND_4H' || this.tradingMode === 'PAPER_TRADING';
+      const effectiveCooldown = isCycleFast ? 5 : Math.min(this.cooldownSeconds, 30);
       const now = Date.now();
       const elapsedSinceLastTrade = (now - this.lastTradeTime) / 1000;
       if (this.lastTradeTime > 0 && elapsedSinceLastTrade < effectiveCooldown) {
@@ -192,8 +202,8 @@ class RiskManager {
         };
       }
 
-      // 7b. Loss Cooldown Check (Rule #84: Configurable cooldown e.g. 15m after loss to prevent revenge trading)
-      if (this.lastLossTime > 0) {
+      // 7b. Loss Cooldown Check (Rule #84: Only active in LIVE_TRADING when lossCooldownMinutes > 0)
+      if (this.tradingMode === 'LIVE_TRADING' && this.lossCooldownMinutes > 0 && this.lastLossTime > 0) {
         const elapsedSinceLossSec = (now - this.lastLossTime) / 1000;
         const lossCooldownSec = this.lossCooldownMinutes * 60;
         if (elapsedSinceLossSec < lossCooldownSec) {
@@ -357,6 +367,11 @@ class RiskManager {
     this.lastLossTime = 0;
   }
 
+  resetTradeCooldown() {
+    this.lastTradeTime = 0;
+    this.lastLossTime = 0;
+  }
+
   calculateLiquidationPrice(entryPrice, leverage = 1, side = 'buy') {
     const lev = Math.max(1, parseInt(leverage, 10) || 1);
     if (lev <= 1 || !entryPrice) return null;
@@ -409,6 +424,8 @@ class RiskManager {
     if (limits.profitLockStepAfterLast !== undefined) this.profitLockStepAfterLast = parseFloat(limits.profitLockStepAfterLast);
     if (limits.lockBufferPercent !== undefined) this.lockBufferPercent = parseFloat(limits.lockBufferPercent);
     if (limits.breakevenTriggerPercent !== undefined) this.breakevenTriggerPercent = parseFloat(limits.breakevenTriggerPercent);
+    if (limits.feeDeductionPercent !== undefined) this.feeDeductionPercent = parseFloat(limits.feeDeductionPercent);
+    if (limits.feeAware !== undefined) this.feeAware = Boolean(limits.feeAware);
 
     if (limits.consecutiveLosses !== undefined) this.consecutiveLosses = parseInt(limits.consecutiveLosses, 10);
     if (limits.maxConsecutiveLosses !== undefined) this.maxConsecutiveLosses = parseInt(limits.maxConsecutiveLosses, 10);

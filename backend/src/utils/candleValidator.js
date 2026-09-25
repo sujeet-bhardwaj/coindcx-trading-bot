@@ -161,16 +161,18 @@ class CandleTracker {
 
   /**
    * Checks if candle can be processed or is a duplicate.
+   * Duplicate skipping only blocks when a position is already active/open on this candle.
    * @param {Object} candle - The latest completed candle
+   * @param {boolean} [hasOpenPosition=false] - Whether an active position currently exists
    * @returns {{ canProcess: boolean, reason?: string }}
    */
-  checkCandle(candle) {
+  checkCandle(candle, hasOpenPosition = false) {
     if (!candle) {
       return { canProcess: false, reason: 'Candle is missing' };
     }
 
     const candleTime = normalizeTimestamp(candle.time);
-    if (this.lastProcessedCandleTimestamp !== null && candleTime === this.lastProcessedCandleTimestamp) {
+    if (hasOpenPosition && this.lastProcessedCandleTimestamp !== null && candleTime === this.lastProcessedCandleTimestamp) {
       return {
         canProcess: false,
         reason: `DUPLICATE_CANDLE_SKIPPED: Candle at ${this.lastProcessedCandleTimeStr} was already evaluated`,

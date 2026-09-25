@@ -4,6 +4,16 @@ import api from '../services/api';
 
 const STRATEGY_DEFINITIONS = [
   {
+    id: 'TREND_PULLBACK_PRO',
+    name: '👑 Institutional Trend Pullback Pro (200 EMA + ADX + TDS Shield)',
+    badge: 'Institutional Edge',
+    timeframe: '15m',
+    timeframeLabel: '15 Minutes (Adaptive)',
+    cycleSeconds: 900,
+    accentColor: '#f59e0b',
+    desc: 'High win-rate institutional setup: Trades strictly with the 200 EMA macro trend, filters choppy sideways noise (ADX >= 18), buys 20/50 EMA dynamic pullbacks, and protects net profit after 1% Indian TDS and exchange fees.',
+  },
+  {
     id: 'SCALPER_3M',
     name: '⚡ 3-Minute Scalper (Dynamic Trailing Profit)',
     badge: '3-Min Fast Scalp',
@@ -85,17 +95,17 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
 
   // Settings State (Default: High-Profit TDS-Optimized Preset)
   const [settings, setSettings] = useState({
-    strategy: 'TREND_4H',
+    strategy: 'TREND_PULLBACK_PRO',
     tradeAmount: 2500,
     leverage: 1,
-    maxLossPercent: 1.8,
-    profitLockLevels: '3,5,8,12,15',
+    maxLossPercent: 1.5,
+    profitLockLevels: '3.5,5.5,8,12,15',
     profitLockStepAfterLast: 1.5,
-    lockBufferPercent: 0.3,
-    breakevenTriggerPercent: 2.0,
+    lockBufferPercent: 0.4,
+    breakevenTriggerPercent: 2.5,
     maxDailyLoss: 250,
     maxOpenPositions: 1,
-    cooldownSeconds: 120,
+    cooldownSeconds: 60,
     evalIntervalMs: 10000,
     fastEmaPeriod: 20,
     slowEmaPeriod: 50,
@@ -250,34 +260,35 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
 
   const applyHighProfitPreset = async () => {
     const highProfitConfig = {
-      strategy: 'TREND_4H',
+      strategy: 'TREND_PULLBACK_PRO',
       tradeAmount: 2500,
       leverage: 1,
-      maxLossPercent: 1.8,
-      profitLockLevels: '3,5,8,12,15',
+      maxLossPercent: 1.5,
+      profitLockLevels: '3.5,5.5,8,12,15',
       profitLockStepAfterLast: 1.5,
-      lockBufferPercent: 0.3,
-      breakevenTriggerPercent: 2.0,
-      maxDailyLoss: 200,
-      cooldownSeconds: 120,
+      lockBufferPercent: 0.4,
+      breakevenTriggerPercent: 2.5,
+      maxDailyLoss: 250,
+      cooldownSeconds: 60,
     };
     setSettings((prev) => ({ ...prev, ...highProfitConfig }));
     setBacktestConfig((prev) => ({
       ...prev,
-      strategyName: 'TREND_4H',
-      interval: '4h',
+      strategyName: 'TREND_PULLBACK_PRO',
+      interval: '15m',
       tradeAmount: 2500,
       leverage: 1,
-      maxLossPercent: 1.8,
-      profitLockLevels: '3,5,8,12,15',
+      maxLossPercent: 1.5,
+      profitLockLevels: '3.5,5.5,8,12,15',
       profitLockStepAfterLast: 1.5,
-      lockBufferPercent: 0.3,
+      lockBufferPercent: 0.4,
+      breakevenTriggerPercent: 2.5,
     }));
     try {
       setSaving(true);
       await api.updateSettings(highProfitConfig);
       setSaved(true);
-      if (onSettingsUpdated) onSettingsUpdated('TREND_4H');
+      if (onSettingsUpdated) onSettingsUpdated('TREND_PULLBACK_PRO');
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       alert(`Failed to apply high-profit preset: ${err.response?.data?.error || err.message}`);

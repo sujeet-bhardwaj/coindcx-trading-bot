@@ -7,6 +7,7 @@ export default function Header({ botStatus, isConnected }) {
   const mode = botStatus?.mode || 'PAPER_TRADING';
   const is3M = botStatus?.strategy === 'SCALPER_3M' || botStatus?.scalper3M?.isActive;
   const is4H = botStatus?.strategy === 'TREND_4H' || botStatus?.scalper4H?.isActive;
+  const isTrendPro = botStatus?.strategy === 'TREND_PULLBACK_PRO' || (!is3M && !is4H);
 
   // Real-time second-by-second live clock for accurate countdowns
   const [now, setNow] = useState(Date.now());
@@ -222,6 +223,33 @@ export default function Header({ botStatus, isConnected }) {
                     : activePosition
                     ? `⏱️ In Trade: ${posHoldFormatted} | Cycle: ${cycleElapsedFormatted} / 04:00:00`
                     : `⏱️ 4H Cycle: ${cycleElapsedFormatted} / 04:00:00 (Left: ${cycleRemainingFormatted})`}
+                </span>
+              </div>
+            </div>
+          ) : isTrendPro ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 14px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.2) 100%)',
+                border: '1px solid rgba(245, 158, 11, 0.5)',
+                boxShadow: '0 0 15px rgba(245, 158, 11, 0.25)',
+              }}
+            >
+              <TrendingUp size={18} style={{ color: '#f59e0b' }} />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#fde68a', letterSpacing: '0.5px' }}>
+                  👑 TREND PULLBACK PRO (TDS-SHIELD)
+                </span>
+                <span style={{ fontSize: '0.72rem', color: '#fcd34d', fontFamily: 'var(--font-mono)', fontWeight: '600' }}>
+                  {!isRunning
+                    ? '⏸️ Stopped (Click Start Bot)'
+                    : activePosition
+                    ? `⏱️ In Trade: ${posHoldFormatted} | Cycle: ${cycleElapsedFormatted} / 15:00`
+                    : `⏱️ 15M Cycle: ${cycleElapsedFormatted} / 15:00 (Left: ${cycleRemainingFormatted})`}
                 </span>
               </div>
             </div>

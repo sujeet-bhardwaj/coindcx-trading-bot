@@ -54,7 +54,9 @@ const config = {
   profitLockLevels: process.env.PROFIT_LOCK_LEVELS || '3,5,8,12,15',
   profitLockStepAfterLast: parseFloat(process.env.PROFIT_LOCK_STEP_AFTER_LAST) || 1.5,
   lockBufferPercent: parseFloat(process.env.LOCK_BUFFER_PERCENT) || 0.3,
-  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 2.0,
+  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 2.5,
+  feeDeductionPercent: parseFloat(process.env.FEE_DEDUCTION_PERCENT) || 1.5,
+  feeAware: process.env.FEE_AWARE !== undefined ? process.env.FEE_AWARE === 'true' : true,
 
   // Legacy mappings for backward compatibility
   get stopLossPercent() { return this.maxLossPercent; },
@@ -63,11 +65,12 @@ const config = {
   get trailingGivebackPercent() { return this.lockBufferPercent; },
 
   cooldownSeconds: parseInt(process.env.COOLDOWN_SECONDS, 10) || 120,
+  lossCooldownMinutes: parseInt(process.env.LOSS_COOLDOWN_MINUTES, 10) || 0,
   maxOpenPositions: parseInt(process.env.MAX_OPEN_POSITIONS, 10) || 1,
   evalIntervalMs: parseInt(process.env.EVAL_INTERVAL_MS, 10) || 10000,
 
   // Strategy defaults
-  defaultStrategy: process.env.DEFAULT_STRATEGY || 'TREND_4H',
+  defaultStrategy: process.env.DEFAULT_STRATEGY || 'TREND_PULLBACK_PRO',
   defaultPair: process.env.DEFAULT_PAIR || 'BTCINR',
   fastEmaPeriod: parseInt(process.env.FAST_EMA_PERIOD, 10) || 20,
   slowEmaPeriod: parseInt(process.env.SLOW_EMA_PERIOD, 10) || 50,

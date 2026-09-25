@@ -173,9 +173,10 @@ function evaluateExit(position, price, cfg = {}) {
 
   // RULE: Breakeven Protection (Only if explicitly enabled via breakevenTriggerPercent > 0)
   if (breakevenTriggerPercent > 0 && peakProfitPercent >= breakevenTriggerPercent && effectiveProfitPercent <= 0) {
+    const feeDetail = isFeeAware ? ` (${currentProfitPercent >= 0 ? '+' : ''}${currentProfitPercent.toFixed(2)}% gross after ${feeDeductionPercent}% fees/TDS)` : '';
     return {
       action: 'SELL',
-      reason: `Breakeven Stop triggered: Trade peaked at +${peakProfitPercent.toFixed(2)}%, exited at ${effectiveProfitPercent.toFixed(2)}% to prevent loss`,
+      reason: `Breakeven Stop triggered: Trade peaked at +${peakProfitPercent.toFixed(2)}%, exited at ${effectiveProfitPercent.toFixed(2)}% net${feeDetail} to prevent net loss`,
       state,
     };
   }

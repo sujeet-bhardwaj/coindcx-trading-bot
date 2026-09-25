@@ -369,7 +369,9 @@ class PaperTradingEngine {
       : currentPrice * (1 - this.slippagePercent / 100);
 
     const grossQuote = sellQty * executionPrice;
-    const exitFee = (grossQuote * this.feePercent) / 100;
+    // Real-world Indian crypto taxation: 1.0% TDS on sell transactions for INR pairs
+    const effectiveFeePercent = (quote === 'INR' && !isShort) ? (this.feePercent + 1.0) : this.feePercent;
+    const exitFee = (grossQuote * effectiveFeePercent) / 100;
     const netQuote = grossQuote - exitFee;
 
     // Calculate Realized P&L

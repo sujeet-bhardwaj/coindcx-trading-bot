@@ -79,7 +79,15 @@ const botSettingsSchema = new mongoose.Schema(
     },
     strategy: {
       type: String,
-      default: 'TREND_4H',
+      default: 'TREND_PULLBACK_PRO',
+    },
+    feeDeductionPercent: {
+      type: Number,
+      default: 1.5,
+    },
+    feeAware: {
+      type: Boolean,
+      default: true,
     },
     evalIntervalMs: {
       type: Number,
