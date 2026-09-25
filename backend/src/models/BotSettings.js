@@ -17,41 +17,41 @@ const botSettingsSchema = new mongoose.Schema(
     },
     pair: {
       type: String,
-      default: 'BTCUSDT',
+      default: 'BTCINR',
     },
     tradeAmount: {
       type: Number,
-      default: 50,
+      default: 2500,
     },
     leverage: {
       type: Number,
-      default: 5,
+      default: 1,
       min: 1,
       max: 100,
     },
     maxLossPercent: {
       type: Number,
-      default: 0.75,
+      default: 1.8,
     },
     profitLockLevels: {
       type: String,
-      default: '1.8,3,5,7,9,11,13,15',
+      default: '3,5,8,12,15',
     },
     profitLockStepAfterLast: {
       type: Number,
-      default: 1,
+      default: 1.5,
     },
     lockBufferPercent: {
       type: Number,
-      default: 0,
+      default: 0.3,
     },
     breakevenTriggerPercent: {
       type: Number,
-      default: 0,
+      default: 2.0,
     },
     stopLossPercent: {
       type: Number,
-      default: 0.75,
+      default: 1.8,
     },
     takeProfitPercent: {
       type: Number,
@@ -63,11 +63,11 @@ const botSettingsSchema = new mongoose.Schema(
     },
     trailingGivebackPercent: {
       type: Number,
-      default: 0,
+      default: 0.3,
     },
     maxDailyLoss: {
       type: Number,
-      default: 100,
+      default: 250,
     },
     maxOpenPositions: {
       type: Number,
@@ -75,11 +75,11 @@ const botSettingsSchema = new mongoose.Schema(
     },
     cooldownSeconds: {
       type: Number,
-      default: 60,
+      default: 120,
     },
     strategy: {
       type: String,
-      default: 'EMA_RSI',
+      default: 'TREND_4H',
     },
     evalIntervalMs: {
       type: Number,

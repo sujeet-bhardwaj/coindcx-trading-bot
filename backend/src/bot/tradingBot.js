@@ -45,7 +45,7 @@ class TradingBot {
   constructor() {
     this.marketService = new MarketService();
     this.coindcxService = new CoinDCXService();
-    this.strategy = strategyRegistry.get(config.defaultStrategy || 'SCALPER_3M');
+    this.strategy = strategyRegistry.get(config.defaultStrategy || 'TREND_4H');
     this.riskManager = riskManager;
     this.paperEngine = paperTradingEngine;
     this.orderService = orderService;
@@ -63,9 +63,9 @@ class TradingBot {
 
     // Bot Operational State
     this.isRunning = false;
-    this.pair = config.defaultPair; // e.g. 'BTCUSDT'
-    this.tradeAmount = config.maxTradeAmount; // Quote currency value to trade per signal
-    this.leverage = config.defaultLeverage || 5; // Leverage multiplier (1x = spot, 2x-100x = margin/futures, default 5x)
+    this.pair = config.defaultPair || 'BTCINR'; // e.g. 'BTCINR'
+    this.tradeAmount = config.maxTradeAmount || 2500; // Quote currency value to trade per signal
+    this.leverage = config.defaultLeverage !== undefined ? config.defaultLeverage : 1; // Leverage multiplier (1x = spot, default 1x)
     this.evalIntervalMs = config.evalIntervalMs || 10000; // Evaluate strategy interval
     this.intervalTimer = null;
     this.isEvaluating = false;

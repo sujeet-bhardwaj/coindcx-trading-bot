@@ -45,16 +45,16 @@ const config = {
 
   // Mode & Risk Limits
   tradingMode: validatedTradingMode,
-  defaultLeverage: parseInt(process.env.DEFAULT_LEVERAGE, 10) || 5,
-  maxTradeAmount: parseFloat(process.env.MAX_TRADE_AMOUNT) || 50,
+  defaultLeverage: parseInt(process.env.DEFAULT_LEVERAGE, 10) || 1,
+  maxTradeAmount: parseFloat(process.env.MAX_TRADE_AMOUNT) || 2500,
   riskPerTrade: parseFloat(process.env.RISK_PER_TRADE) || 0.005, // 0.5% maximum capital risk
   maxAccountExposure: parseFloat(process.env.MAX_ACCOUNT_EXPOSURE) || 1.0, // Max 100% of balance per position
-  // Unified Exit Engine Settings
-  maxLossPercent: parseFloat(process.env.MAX_LOSS_PERCENT) || 0.75,
-  profitLockLevels: process.env.PROFIT_LOCK_LEVELS || '1.8,3,5,7,9,11,13,15',
-  profitLockStepAfterLast: parseFloat(process.env.PROFIT_LOCK_STEP_AFTER_LAST) || 1,
-  lockBufferPercent: parseFloat(process.env.LOCK_BUFFER_PERCENT) || 0,
-  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 0,
+  // Unified Exit Engine Settings (Optimized for TDS & Fees)
+  maxLossPercent: parseFloat(process.env.MAX_LOSS_PERCENT) || 1.8,
+  profitLockLevels: process.env.PROFIT_LOCK_LEVELS || '3,5,8,12,15',
+  profitLockStepAfterLast: parseFloat(process.env.PROFIT_LOCK_STEP_AFTER_LAST) || 1.5,
+  lockBufferPercent: parseFloat(process.env.LOCK_BUFFER_PERCENT) || 0.3,
+  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 2.0,
 
   // Legacy mappings for backward compatibility
   get stopLossPercent() { return this.maxLossPercent; },
@@ -62,13 +62,13 @@ const config = {
   get trailingActivationPercent() { return 0.5; },
   get trailingGivebackPercent() { return this.lockBufferPercent; },
 
-  cooldownSeconds: parseInt(process.env.COOLDOWN_SECONDS, 10) || 60,
+  cooldownSeconds: parseInt(process.env.COOLDOWN_SECONDS, 10) || 120,
   maxOpenPositions: parseInt(process.env.MAX_OPEN_POSITIONS, 10) || 1,
   evalIntervalMs: parseInt(process.env.EVAL_INTERVAL_MS, 10) || 10000,
 
   // Strategy defaults
-  defaultStrategy: process.env.DEFAULT_STRATEGY || 'SCALPER_3M',
-  defaultPair: process.env.DEFAULT_PAIR || 'BTCUSDT',
+  defaultStrategy: process.env.DEFAULT_STRATEGY || 'TREND_4H',
+  defaultPair: process.env.DEFAULT_PAIR || 'BTCINR',
   fastEmaPeriod: parseInt(process.env.FAST_EMA_PERIOD, 10) || 20,
   slowEmaPeriod: parseInt(process.env.SLOW_EMA_PERIOD, 10) || 50,
   rsiPeriod: parseInt(process.env.RSI_PERIOD, 10) || 14,

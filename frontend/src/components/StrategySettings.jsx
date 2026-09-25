@@ -83,19 +83,19 @@ const getTimeframeForStrategy = (stratId) => {
 export default function StrategySettings({ botStatus, onSettingsUpdated }) {
   const [activeTab, setActiveTab] = useState('settings'); // 'settings' | 'backtest'
 
-  // Settings State (Default Leverage: 5x)
+  // Settings State (Default: High-Profit TDS-Optimized Preset)
   const [settings, setSettings] = useState({
-    strategy: 'EMA_RSI',
-    tradeAmount: 50,
-    leverage: 5,
-    maxLossPercent: 0.75,
-    profitLockLevels: '1.8,3,5,7,9,11,13,15',
-    profitLockStepAfterLast: 1,
-    lockBufferPercent: 0,
-    breakevenTriggerPercent: 0,
-    maxDailyLoss: 100,
+    strategy: 'TREND_4H',
+    tradeAmount: 2500,
+    leverage: 1,
+    maxLossPercent: 1.8,
+    profitLockLevels: '3,5,8,12,15',
+    profitLockStepAfterLast: 1.5,
+    lockBufferPercent: 0.3,
+    breakevenTriggerPercent: 2.0,
+    maxDailyLoss: 250,
     maxOpenPositions: 1,
-    cooldownSeconds: 60,
+    cooldownSeconds: 120,
     evalIntervalMs: 10000,
     fastEmaPeriod: 20,
     slowEmaPeriod: 50,
@@ -105,19 +105,19 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Backtest State (Default Leverage: 5x)
+  // Backtest State (Default: High-Profit 4H Trend Preset)
   const [backtestConfig, setBacktestConfig] = useState({
-    pair: 'BTCUSDT',
-    strategyName: 'EMA_RSI',
-    interval: '15m',
+    pair: 'BTCINR',
+    strategyName: 'TREND_4H',
+    interval: '4h',
     limit: 200,
-    tradeAmount: 100,
-    leverage: 5,
-    maxLossPercent: 0.75,
-    profitLockLevels: '1.8,3,5,7,9,11,13,15',
-    profitLockStepAfterLast: 1,
-    lockBufferPercent: 0,
-    breakevenTriggerPercent: 0,
+    tradeAmount: 2500,
+    leverage: 1,
+    maxLossPercent: 1.8,
+    profitLockLevels: '3,5,8,12,15',
+    profitLockStepAfterLast: 1.5,
+    lockBufferPercent: 0.3,
+    breakevenTriggerPercent: 2.0,
   });
   const [backtestLoading, setBacktestLoading] = useState(false);
   const [backtestResult, setBacktestResult] = useState(null);
