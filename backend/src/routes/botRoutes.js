@@ -21,6 +21,7 @@ router.post('/reset-consecutive-loss-pause', authMiddleware, botController.reset
 router.patch('/settings', authMiddleware, botController.updateSettings);
 router.post('/mode', authMiddleware, botController.switchMode);
 router.post('/simulate-trade', authMiddleware, botController.simulateTrade);
+router.post('/instant-sell', authMiddleware, botController.instantSell);
 router.post('/backtest', authMiddleware, botController.runBacktest);
 
 module.exports = router;

@@ -1374,6 +1374,66 @@ class TradingBot {
   }
 
   /**
+   * Manual Instant Sell (Market Exit triggered by user)
+   */
+  async manualInstantSell(reason = 'Manual Instant Sell by User') {
+    this.log(`⚡ Manual Instant Market Sell triggered: ${reason}`, 'warn');
+
+    // 1. If we have active tracked positions, close them immediately
+    if (this.activePositions.length > 0) {
+      await this._handleSellAllPositions(reason);
+      this._notifyStateChange('status_change');
+      return {
+        success: true,
+        message: 'Active position sold successfully at market price.',
+        status: this.getStatus(),
+      };
+    }
+
+    // 2. In LIVE_TRADING, check if wallet holds unsold crypto asset
+    if (config.tradingMode === 'LIVE_TRADING') {
+      try {
+        await this.syncLiveBalances();
+        const baseAsset = this.pair.replace(/(INR|USDT)$/, '');
+        const availableQty = this.liveBalances[baseAsset] || 0;
+        if (availableQty > 0.00005) {
+          const clientOrderId = `LIVE_MANUAL_SELL_${Date.now()}`;
+          const liveOrderPayload = {
+            side: 'sell',
+            order_type: 'market_order',
+            market: this.pair,
+            total_quantity: availableQty,
+            client_order_id: clientOrderId,
+          };
+          this.log(`Placing Live Market Sell for ${availableQty} ${baseAsset}...`, 'trade');
+          const res = await this.coindcxService.createOrder(liveOrderPayload);
+          this.log(`CoinDCX Live Market Sell executed: ${JSON.stringify(res)}`, 'trade');
+          await this.syncLiveBalances();
+          this.orderStateMachine.transitionTo(OrderStates.NO_POSITION, 'Manual exit completed');
+          this._notifyStateChange('status_change');
+          return {
+            success: true,
+            message: `Successfully sold ${availableQty} ${baseAsset} on CoinDCX at market price.`,
+            status: this.getStatus(),
+          };
+        }
+      } catch (err) {
+        this.log(`Live manual sell error: ${err.message}`, 'error');
+        return {
+          success: false,
+          message: `Live sell failed: ${err.message}`,
+        };
+      }
+    }
+
+    return {
+      success: false,
+      message: 'No active position or crypto balance found to sell right now.',
+      status: this.getStatus(),
+    };
+  }
+
+  /**
    * PHASE 10: Live Exit Order Execution with 3x Retry, Backoff, and Audit Logging
    */
   async _executeLiveSell(position, reason, state = {}) {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, TrendingUp, TrendingDown, Target, Wallet, Cpu, Zap, Clock } from 'lucide-react';
+import api from '../services/api';
 
 export default function MetricsCards({
   botStatus,
@@ -15,6 +16,19 @@ export default function MetricsCards({
 }) {
   const isINR = selectedPair?.endsWith('INR');
   const currencySymbol = isINR ? '₹' : '$';
+  const [selling, setSelling] = useState(false);
+
+  const handleQuickSell = async () => {
+    if (!window.confirm('Kya aap is active trade ko abhi turant market price par bechna (SELL) chahte hain?')) return;
+    setSelling(true);
+    try {
+      await api.instantSell({ reason: 'Quick Sell from Active Position Card' });
+    } catch (err) {
+      alert(`Sell failed: ${err.message}`);
+    } finally {
+      setSelling(false);
+    }
+  };
 
   // Live second-by-second clock for smooth countdown timers
   const [now, setNow] = useState(Date.now());
@@ -318,7 +332,7 @@ export default function MetricsCards({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span
               style={{
                 fontSize: '0.75rem',
@@ -336,6 +350,31 @@ export default function MetricsCards({
               <span className={`pulse-dot ${activePosition ? 'pulse-green' : 'pulse-yellow'}`} style={{ width: '7px', height: '7px' }}></span>
               {activePosition ? '🟢 POSITION ACTIVE (Holding Bought Coin)' : '🔍 WAITING FOR BUY SIGNAL'}
             </span>
+
+            {activePosition && (
+              <button
+                id="btn-quick-sell-active"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(220, 38, 38, 0.45) 100%)',
+                  color: '#fee2e2',
+                  border: '1px solid #ef4444',
+                  padding: '4px 12px',
+                  fontSize: '0.78rem',
+                  fontWeight: '700',
+                  borderRadius: '6px',
+                  cursor: selling ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
+                }}
+                disabled={selling}
+                onClick={handleQuickSell}
+                title="Immediately sell this active trade at live market price"
+              >
+                <Zap size={13} style={{ color: '#f87171' }} /> {selling ? 'Selling...' : '⚡ Sell Now (तुरंत बेचें)'}
+              </button>
+            )}
           </div>
         </div>
 

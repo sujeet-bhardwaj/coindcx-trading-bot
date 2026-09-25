@@ -162,6 +162,32 @@ export default function GlobalControls({ botStatus, onActionSuccess }) {
     }
   };
 
+  const handleInstantSell = async () => {
+    const hasPosition = (botStatus?.activePositions?.length > 0) || botStatus?.activePosition;
+    const confirmText = hasPosition
+      ? 'Kya aap abhi turant Live Market Price par BTC/crypto bechna (SELL) chahte hain?'
+      : 'Kya aap CoinDCX wallet me mojood crypto ko abhi turant live market price par SELL karna chahte hain?';
+
+    if (!window.confirm(confirmText)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.instantSell({ reason: 'Manual Instant Market Sell from dashboard' });
+      if (res.success) {
+        showFeedback(`⚡ ${res.message || 'Market Sell executed successfully!'}`);
+        if (onActionSuccess) onActionSuccess();
+      } else {
+        showFeedback(res.message || 'Instant sell failed or no active trade to sell', true);
+      }
+    } catch (err) {
+      showFeedback(err.message || 'Sell failed', true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="glass-panel" style={{ padding: '18px 24px', marginBottom: '24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
@@ -188,6 +214,26 @@ export default function GlobalControls({ botStatus, onActionSuccess }) {
             onClick={handleStop}
           >
             <Square size={16} /> STOP BOT
+          </button>
+
+          {/* INSTANT MARKET SELL (तुरंत बेचें) */}
+          <button
+            id="btn-instant-sell"
+            className="btn"
+            style={{
+              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(220, 38, 38, 0.45) 100%)',
+              color: '#fee2e2',
+              border: '1px solid rgba(239, 68, 68, 0.7)',
+              fontWeight: '700',
+              boxShadow: (botStatus?.activePositions?.length > 0 || botStatus?.activePosition)
+                ? '0 0 12px rgba(239, 68, 68, 0.5)'
+                : 'none',
+            }}
+            disabled={loading}
+            onClick={handleInstantSell}
+            title="Instant Market Sell: Click to immediately exit and sell all coins at live market price"
+          >
+            <Zap size={16} style={{ color: '#f87171' }} /> ⚡ INSTANT SELL (तुरंत बेचें)
           </button>
 
           {/* SIMULATE TEST TRADE */}

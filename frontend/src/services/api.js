@@ -32,6 +32,7 @@ export const api = {
   updateSettings: (settings) => client.patch('/bot/settings', settings).then((r) => r.data),
   switchMode: (payload = {}) => client.post('/bot/mode', payload).then((r) => r.data),
   simulateTrade: (payload = {}) => client.post('/bot/simulate-trade', payload).then((r) => r.data),
+  instantSell: (payload = {}) => client.post('/bot/instant-sell', payload).then((r) => r.data),
   runBacktest: (payload = {}) => client.post('/bot/backtest', payload).then((r) => r.data),
 
   // Account

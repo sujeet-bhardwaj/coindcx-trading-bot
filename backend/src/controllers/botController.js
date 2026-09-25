@@ -284,12 +284,23 @@ async function getDailySummary(req, res) {
   return res.json(report);
 }
 
+async function instantSell(req, res, next) {
+  try {
+    const { reason = 'Manual instant sell from dashboard' } = req.body || {};
+    const result = await tradingBot.manualInstantSell(reason);
+    return res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getStatus,
   startBot,
   stopBot,
   emergencyStop,
   resetEmergencyStop,
+  instantSell,
   getSettings,
   updateSettings,
   switchMode,
