@@ -127,6 +127,23 @@ async function startServer() {
       console.log(`📊 Health Endpoint: http://localhost:${config.port}/api/health`);
       console.log(`🤖 Bot Status: ${tradingBot.isRunning ? 'RUNNING' : 'STOPPED'}`);
       console.log('====================================================');
+
+      // 24/7 Cloud Keepalive (Prevents Render Free Tier from sleeping when user turns off laptop)
+      const renderUrl = process.env.RENDER_EXTERNAL_URL || process.env.SELF_PING_URL;
+      if (renderUrl) {
+        const keepaliveIntervalMs = 10 * 60 * 1000; // 10 minutes
+        setInterval(() => {
+          try {
+            const pingUrl = `${renderUrl.replace(/\/$/, '')}/api/health`;
+            const https = require('https');
+            const httpLib = pingUrl.startsWith('https') ? https : http;
+            httpLib.get(pingUrl, () => {}).on('error', () => {});
+          } catch (pingErr) {
+            // ignore
+          }
+        }, keepaliveIntervalMs);
+        console.log(`⏱️ 24/7 Cloud Keepalive active for: ${renderUrl} (Self-pings every 10m to prevent sleeping)`);
+      }
     });
   }
 }

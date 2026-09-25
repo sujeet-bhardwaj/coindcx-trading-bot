@@ -279,6 +279,10 @@ class TradingBot {
             cooldownSeconds: savedSettings.cooldownSeconds,
           });
           this.log(`Restored persistent settings for pair: ${this.pair}, leverage: ${this.leverage}x, interval: ${this.evalIntervalMs}ms`);
+          if (savedSettings.enabled && !savedSettings.emergencyStop && !this.isRunning) {
+            this.log('Restoring previously RUNNING bot state from database on cloud server boot...', 'info');
+            this.start().catch((startErr) => this.log(`Auto-start on boot failed: ${startErr.message}`, 'error'));
+          }
         }
       }
 
