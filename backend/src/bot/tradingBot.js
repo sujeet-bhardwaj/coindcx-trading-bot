@@ -1090,8 +1090,12 @@ class TradingBot {
     const precision = marketDetails?.target_currency_precision || 5;
     const step = marketDetails?.step ? parseFloat(marketDetails.step) : (1 / Math.pow(10, precision));
 
-    // Use dynamically sized quantity or calculate fallback
-    const targetQuote = calculatedTradeAmount || Math.max(this.tradeAmount, minNotional + 1);
+    // Use dynamically sized quantity or calculate fallback, adapting to available balance
+    let targetQuote = calculatedTradeAmount || Math.max(this.tradeAmount, minNotional + 1);
+    if (availableBalance >= minNotional && availableBalance < targetQuote) {
+      targetQuote = Math.max(minNotional + 1, parseFloat((availableBalance * 0.98).toFixed(2)));
+      this.log(`Adapting trade amount to real available balance: ₹${targetQuote.toFixed(2)} ${quoteCurrency}`, 'info');
+    }
 
     // Rule #75: Balance Reconciliation before live order creation
     const balanceRecon = BalanceReconciliationEngine.reconcileBalance({
@@ -1588,6 +1592,7 @@ class TradingBot {
       this._stopPositionMonitor();
       this.orderStateMachine.reconcile(0);
       this.candleTracker.reset();
+      this.riskManager.resetTradeCooldown();
     }
 
     if (getIsConnected()) {
