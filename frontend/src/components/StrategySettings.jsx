@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sliders, Save, Check, Play, TrendingUp, ShieldAlert, BarChart2, Activity, Zap } from 'lucide-react';
+import { Sliders, Save, Check, Play, TrendingUp, ShieldAlert, BarChart2, Activity, Zap, Clock } from 'lucide-react';
 import api from '../services/api';
 
 const STRATEGY_DEFINITIONS = [
@@ -7,45 +7,78 @@ const STRATEGY_DEFINITIONS = [
     id: 'SCALPER_3M',
     name: '⚡ 3-Minute Scalper (Dynamic Trailing Profit)',
     badge: '3-Min Fast Scalp',
+    timeframe: '3m',
+    timeframeLabel: '3 Minutes (03:00 Cycle)',
+    cycleSeconds: 180,
+    accentColor: '#38bdf8',
     desc: 'Rapid 3-minute execution: Micro EMA (3/8) + RSI (7) with Dynamic Trailing Profit (unlimited upside), strict fixed stop-loss (-0.35%), and 3-min auto-exit.',
   },
   {
     id: 'SCALPER_15M',
     name: '⚡ 15-Minute Scalper (Dynamic Trailing Profit)',
     badge: '15-Min Scalper',
+    timeframe: '15m',
+    timeframeLabel: '15 Minutes (15:00 Cycle)',
+    cycleSeconds: 900,
+    accentColor: '#34d399',
     desc: 'Continuous 15-minute execution: EMA (9/21) + RSI (14) with Dynamic Trailing Profit (+0.60%), strict fixed stop-loss (-0.80%), and 15-min auto-exit.',
   },
   {
     id: 'EMA_RSI',
     name: 'EMA Crossover + RSI (15M Dynamic)',
     badge: '15-Min Trend / Scalp',
+    timeframe: '15m',
+    timeframeLabel: '15 Minutes (15:00 Cycle)',
+    cycleSeconds: 900,
+    accentColor: '#34d399',
     desc: 'Active 15-minute trading: Fast & slow EMA crossover + momentum buying, dynamic trailing profit, and 15-min auto-exit.',
   },
   {
     id: 'BOLLINGER_BANDS',
     name: 'Bollinger Bands (Mean Reversion)',
     badge: 'Mean Reversion',
+    timeframe: '15m',
+    timeframeLabel: '15 Minutes (15:00 Cycle)',
+    cycleSeconds: 900,
+    accentColor: '#34d399',
     desc: 'Buys extreme oversold dips at the lower band and exits at the upper band or overbought RSI.',
   },
   {
     id: 'GRID',
     name: 'Grid Trading',
     badge: 'Range Bound',
+    timeframe: '15m',
+    timeframeLabel: '15 Minutes (15:00 Cycle)',
+    cycleSeconds: 900,
+    accentColor: '#34d399',
     desc: 'Systematic stepped grid buying on dips and taking profit at upper volatility levels.',
   },
   {
     id: 'MACD_RSI',
     name: 'MACD + RSI Breakout',
     badge: 'Momentum Breakout',
+    timeframe: '15m',
+    timeframeLabel: '15 Minutes (15:00 Cycle)',
+    cycleSeconds: 900,
+    accentColor: '#34d399',
     desc: 'Captures explosive trend movements when MACD histogram flips positive with healthy RSI.',
   },
   {
     id: 'TREND_4H',
     name: '📈 4-Hour Trend & Swing (EMA 20/50 + RSI)',
     badge: '4-Hour Swing',
+    timeframe: '4h',
+    timeframeLabel: '4 Hours (04:00:00 Cycle)',
+    cycleSeconds: 14400,
+    accentColor: '#c084fc',
     desc: 'Macro 4-hour trend following: EMA (20/50) golden cross/momentum with RSI (14) filter, unified profit-locking ladder, and strict stop-loss.',
   },
 ];
+
+const getTimeframeForStrategy = (stratId) => {
+  const meta = STRATEGY_DEFINITIONS.find((s) => s.id === stratId);
+  return meta ? meta.timeframe : '15m';
+};
 
 export default function StrategySettings({ botStatus, onSettingsUpdated }) {
   const [activeTab, setActiveTab] = useState('settings'); // 'settings' | 'backtest'
@@ -92,9 +125,11 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
 
   useEffect(() => {
     if (botStatus) {
+      const activeStrat = botStatus.strategy || settings.strategy;
+      const meta = STRATEGY_DEFINITIONS.find((s) => s.id === activeStrat) || STRATEGY_DEFINITIONS[0];
       setSettings((prev) => ({
         ...prev,
-        strategy: botStatus.strategy || prev.strategy,
+        strategy: activeStrat,
         tradeAmount: botStatus.tradeAmount || prev.tradeAmount,
         leverage: botStatus.leverage ?? botStatus.riskLimits?.leverage ?? prev.leverage,
         evalIntervalMs: botStatus.evalIntervalMs || prev.evalIntervalMs,
@@ -110,7 +145,8 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
       setBacktestConfig((prev) => ({
         ...prev,
         pair: botStatus.pair || prev.pair,
-        strategyName: botStatus.strategy || prev.strategyName,
+        strategyName: activeStrat,
+        interval: meta.timeframe, // Auto-sync interval to strategy timeframe (3m, 15m, 4h)
         leverage: botStatus.leverage ?? prev.leverage,
         maxLossPercent: botStatus.riskLimits?.maxLossPercent ?? prev.maxLossPercent,
         profitLockLevels: botStatus.riskLimits?.profitLockLevels ?? prev.profitLockLevels,
@@ -118,10 +154,37 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
     }
   }, [botStatus]);
 
-  const handleChange = (field, val) => {
+  const handleStrategySelect = (newStrategyId) => {
+    const meta = STRATEGY_DEFINITIONS.find((s) => s.id === newStrategyId) || STRATEGY_DEFINITIONS[0];
     setSettings((prev) => ({
       ...prev,
-      [field]: (field === 'strategy' || field === 'profitLockLevels') ? val : (val === '' ? '' : parseFloat(val) || 0),
+      strategy: newStrategyId,
+    }));
+    // Auto-update backtester strategy AND timeframe to match selected strategy!
+    setBacktestConfig((prev) => ({
+      ...prev,
+      strategyName: newStrategyId,
+      interval: meta.timeframe,
+    }));
+  };
+
+  const handleBacktestStrategySelect = (stratId) => {
+    const meta = STRATEGY_DEFINITIONS.find((s) => s.id === stratId) || STRATEGY_DEFINITIONS[0];
+    setBacktestConfig((prev) => ({
+      ...prev,
+      strategyName: stratId,
+      interval: meta.timeframe, // Auto-change candle timeframe to match strategy! (e.g. 3m, 15m, 4h)
+    }));
+  };
+
+  const handleChange = (field, val) => {
+    if (field === 'strategy') {
+      handleStrategySelect(val);
+      return;
+    }
+    setSettings((prev) => ({
+      ...prev,
+      [field]: field === 'profitLockLevels' ? val : (val === '' ? '' : parseFloat(val) || 0),
     }));
   };
 
@@ -131,7 +194,7 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
     try {
       await api.updateSettings(settings);
       setSaved(true);
-      if (onSettingsUpdated) onSettingsUpdated();
+      if (onSettingsUpdated) onSettingsUpdated(settings.strategy);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       alert(`Failed to save settings: ${err.response?.data?.error || err.message}`);
@@ -236,56 +299,161 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
           {/* Strategy Selection Card */}
           <div
             style={{
-              background: 'rgba(6,182,212,0.04)',
-              border: '1px solid rgba(6,182,212,0.18)',
+              background: 'linear-gradient(135deg, rgba(6,182,212,0.06) 0%, rgba(15,23,42,0.6) 100%)',
+              border: `1px solid ${currentStrategyMeta.accentColor || 'rgba(6,182,212,0.3)'}`,
               borderRadius: '12px',
-              padding: '16px',
+              padding: '18px',
               marginBottom: '20px',
+              transition: 'all 0.3s ease',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-bright)' }}>
-                Select Active Trading Strategy
-              </label>
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  color: 'var(--accent-cyan)',
-                  background: 'rgba(6,182,212,0.12)',
-                  padding: '3px 10px',
-                  borderRadius: '9999px',
-                  border: '1px solid rgba(6,182,212,0.3)',
-                }}
-              >
-                {currentStrategyMeta.badge}
-              </span>
+            {/* Top row: Title and Timeframe & Badge indicators */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={18} style={{ color: currentStrategyMeta.accentColor || 'var(--accent-cyan)' }} />
+                <label style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-bright)' }}>
+                  Active Trading Strategy & Execution Timeframe
+                </label>
+              </div>
+
+              {/* Dynamic Auto-Timeframe Badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span
+                  style={{
+                    fontSize: '0.74rem',
+                    fontWeight: '700',
+                    color: currentStrategyMeta.accentColor || '#38bdf8',
+                    background: 'rgba(0,0,0,0.4)',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${currentStrategyMeta.accentColor || '#38bdf8'}55`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                  }}
+                >
+                  <Clock size={13} /> {currentStrategyMeta.timeframeLabel}
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    color: '#f8fafc',
+                    background: `${currentStrategyMeta.accentColor}25`,
+                    padding: '4px 10px',
+                    borderRadius: '9999px',
+                    border: `1px solid ${currentStrategyMeta.accentColor}66`,
+                    fontWeight: '600',
+                  }}
+                >
+                  {currentStrategyMeta.badge}
+                </span>
+              </div>
             </div>
 
+            {/* Strategy Dropdown */}
             <select
               className="form-input"
               value={settings.strategy}
               onChange={(e) => handleChange('strategy', e.target.value)}
               style={{
                 width: '100%',
-                padding: '10px 14px',
+                padding: '11px 14px',
                 fontSize: '0.92rem',
-                fontWeight: '600',
-                background: '#131b2e',
+                fontWeight: '700',
+                background: '#0f172a',
                 color: '#f8fafc',
                 borderRadius: '8px',
-                border: '1px solid rgba(6,182,212,0.3)',
-                marginBottom: '8px',
+                border: `1px solid ${currentStrategyMeta.accentColor}88`,
+                marginBottom: '12px',
+                cursor: 'pointer',
               }}
             >
               {STRATEGY_DEFINITIONS.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} — {s.badge}
+                  {s.name} [{s.timeframe.toUpperCase()}]
                 </option>
               ))}
             </select>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-              {currentStrategyMeta.desc}
-            </p>
+
+            {/* Quick Strategy Selection Chips */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+              {STRATEGY_DEFINITIONS.map((s) => {
+                const isSelected = settings.strategy === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => handleStrategySelect(s.id)}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '0.76rem',
+                      fontWeight: '700',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      background: isSelected ? s.accentColor : 'rgba(255,255,255,0.04)',
+                      color: isSelected ? '#0f172a' : 'var(--text-dim)',
+                      border: isSelected ? `1px solid ${s.accentColor}` : '1px solid rgba(255,255,255,0.08)',
+                      boxShadow: isSelected ? `0 0 12px ${s.accentColor}55` : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <span>{s.badge}</span>
+                    <span
+                      style={{
+                        fontSize: '0.68rem',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        background: isSelected ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)',
+                        color: isSelected ? '#0f172a' : s.accentColor,
+                        fontWeight: '800',
+                      }}
+                    >
+                      {s.timeframe.toUpperCase()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Strategy Info & Timeframe Banner */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: '12px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                flexWrap: 'wrap',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-bright)', lineHeight: 1.4, flex: '1 1 300px' }}>
+                {currentStrategyMeta.desc}
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.74rem',
+                  fontWeight: '700',
+                  color: currentStrategyMeta.accentColor,
+                  background: `${currentStrategyMeta.accentColor}18`,
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: `1px solid ${currentStrategyMeta.accentColor}44`,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Clock size={13} />
+                <span>Auto-Timeframe: {currentStrategyMeta.timeframe.toUpperCase()} ({currentStrategyMeta.cycleSeconds}s cycle)</span>
+              </div>
+            </div>
           </div>
 
           {/* Leverage Multiplier & Margin Control Card */}
@@ -714,37 +882,49 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
               </div>
 
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Backtest Strategy
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                    Backtest Strategy
+                  </label>
+                  <span style={{ fontSize: '0.7rem', color: '#c084fc', fontWeight: '700' }}>
+                    {getTimeframeForStrategy(backtestConfig.strategyName).toUpperCase()} Mode
+                  </span>
+                </div>
                 <select
                   className="form-input"
                   value={backtestConfig.strategyName}
-                  onChange={(e) => setBacktestConfig({ ...backtestConfig, strategyName: e.target.value })}
-                  style={{ width: '100%' }}
+                  onChange={(e) => handleBacktestStrategySelect(e.target.value)}
+                  style={{ width: '100%', borderColor: 'rgba(168,85,247,0.3)' }}
                 >
                   {STRATEGY_DEFINITIONS.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name}
+                      {s.name} [{s.timeframe.toUpperCase()}]
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)', display: 'block', marginBottom: '6px' }}>
-                  Candle Timeframe
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                    Candle Timeframe
+                  </label>
+                  <span style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: '700' }}>
+                    ⚡ Auto-Selected: {backtestConfig.interval.toUpperCase()}
+                  </span>
+                </div>
                 <select
                   className="form-input"
                   value={backtestConfig.interval}
                   onChange={(e) => setBacktestConfig({ ...backtestConfig, interval: e.target.value })}
-                  style={{ width: '100%' }}
+                  style={{ width: '100%', borderColor: 'rgba(56,189,248,0.4)', fontWeight: '600' }}
                 >
+                  <option value="1m">1 Minute (Ultra Micro)</option>
+                  <option value="3m">3 Minutes (⚡ 3M Fast Scalp)</option>
                   <option value="5m">5 Minutes</option>
-                  <option value="15m">15 Minutes</option>
+                  <option value="15m">15 Minutes (🕒 15M Trend / Scalp)</option>
                   <option value="1h">1 Hour</option>
-                  <option value="4h">4 Hours</option>
+                  <option value="4h">4 Hours (📈 4H Macro Swing)</option>
                   <option value="1d">1 Day</option>
                 </select>
               </div>

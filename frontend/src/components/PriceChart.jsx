@@ -54,7 +54,7 @@ export default function PriceChart({
   const domainMin = Math.floor(minPrice - padding);
   const domainMax = Math.ceil(maxPrice + padding);
 
-  const intervals = ['1m', '5m', '15m', '1h', '4h'];
+  const intervals = ['1m', '3m', '5m', '15m', '1h', '4h'];
 
   return (
     <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
@@ -87,7 +87,17 @@ export default function PriceChart({
             </div>
           </div>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '2px' }}>
-            {interval === '5m' ? '5-Minute' : interval === '1m' ? '1-Minute' : interval === '15m' ? '15-Minute' : '1-Hour'} Candles with Fast EMA (20) & Slow EMA (50)
+            {interval === '1m'
+              ? '1-Minute'
+              : interval === '3m'
+              ? '3-Minute'
+              : interval === '5m'
+              ? '5-Minute'
+              : interval === '15m'
+              ? '15-Minute'
+              : interval === '4h'
+              ? '4-Hour'
+              : '1-Hour'} Candles with Fast EMA (20) & Slow EMA (50)
           </p>
         </div>
 

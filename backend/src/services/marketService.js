@@ -197,6 +197,24 @@ class MarketService {
   async getCandles(pair, interval = '1m', limit = 100) {
     const exchangePair = await this.getExchangePairName(pair);
 
+    // If 3m is requested, fetch 1m candles (limit * 3) and aggregate into 3m candles
+    if (interval === '3m') {
+      const rawLimit = Math.min(Math.max(limit * 3, 50), 500);
+      try {
+        const oneMinCandles = await this.coindcx.getCandles({
+          pair: exchangePair,
+          interval: '1m',
+          limit: rawLimit,
+        });
+        const aggregated = this.aggregateCandles(oneMinCandles, 3);
+        if (aggregated.length > 0) {
+          return aggregated.slice(-limit);
+        }
+      } catch (err) {
+        console.warn(`3m candle aggregation warning: ${err.message}. Falling back to 1m.`);
+      }
+    }
+
     // If 5m is requested, fetch 1m candles (limit * 5) and aggregate into 5m candles
     if (interval === '5m') {
       const rawLimit = Math.min(Math.max(limit * 5, 50), 500);

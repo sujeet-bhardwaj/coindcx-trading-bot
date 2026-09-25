@@ -21,7 +21,13 @@ export default function App() {
   const [trades, setTrades] = useState([]);
   const [logs, setLogs] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
-  const [selectedInterval, setSelectedInterval] = useState('5m');
+  const getStrategyTimeframe = (stratName) => {
+    if (stratName === 'SCALPER_3M') return '3m';
+    if (stratName === 'TREND_4H' || stratName === 'SWING_4H') return '4h';
+    return '15m';
+  };
+
+  const [selectedInterval, setSelectedInterval] = useState('15m');
 
   // Load Initial Market Data & Pairs
   const loadInitialData = useCallback(async () => {
@@ -35,6 +41,10 @@ export default function App() {
 
       setBotStatus(statusData);
       if (statusData?.pair) setSelectedPair(statusData.pair);
+      if (statusData?.strategy) {
+        const stratInterval = getStrategyTimeframe(statusData.strategy);
+        setSelectedInterval(stratInterval);
+      }
       if (statusData?.recentLogs) setLogs(statusData.recentLogs);
       setPairs(pairsData);
       setOrders(ordersData);
@@ -169,9 +179,15 @@ export default function App() {
     loadPairData(selectedPair, newInterval);
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = (newStrategy) => {
     loadInitialData();
-    loadPairData(selectedPair, selectedInterval);
+    if (newStrategy) {
+      const stratInterval = getStrategyTimeframe(newStrategy);
+      setSelectedInterval(stratInterval);
+      loadPairData(selectedPair, stratInterval);
+    } else {
+      loadPairData(selectedPair, selectedInterval);
+    }
   };
 
   // Calculate 5-minute trade stats

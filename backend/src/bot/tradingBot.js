@@ -549,7 +549,7 @@ class TradingBot {
       let rawCandles = [];
       let candleInterval = '15m';
       if (this.strategy?.name === 'SCALPER_3M') {
-        candleInterval = '1m';
+        candleInterval = '3m';
       } else if (this.strategy?.name === 'TREND_4H' || this.strategy?.name === 'SWING_4H') {
         candleInterval = '4h';
       }
@@ -662,14 +662,17 @@ class TradingBot {
       this._handleHeartbeatLog(signalResult.indicators);
 
       const now = Date.now();
-      const cycleDurationSeconds = this.strategy?.name === 'SCALPER_3M' ? 180 : 900;
+      const is4H = this.strategy?.name === 'TREND_4H' || this.strategy?.name === 'SWING_4H';
+      const is3M = this.strategy?.name === 'SCALPER_3M';
+      const cycleDurationSeconds = is4H ? 14400 : (is3M ? 180 : 900);
+      const cycleLabel = is4H ? '4-Hour' : (is3M ? '3-Minute' : '15-Minute');
 
-      // Rollover 15-minute search cycle if no active positions and 15 mins elapsed
+      // Rollover search cycle if no active positions and cycle duration elapsed
       if (this.isRunning && this.cycleStartTime && this.activePositions.length === 0) {
         const totalElapsed = Math.floor((now - this.cycleStartTime) / 1000);
         if (totalElapsed >= cycleDurationSeconds) {
           this.cycleStartTime = Date.now();
-          this.log(`⏱️ 15-Minute cycle finished. Restarting new 15-minute evaluation cycle from 1 sec...`, 'info');
+          this.log(`⏱️ ${cycleLabel} cycle finished. Restarting new ${cycleLabel} evaluation cycle from 1 sec...`, 'info');
         }
       }
 
@@ -690,12 +693,13 @@ class TradingBot {
 
       const cycleInfo = {
         strategy: this.strategy.name,
-        is15M: this.strategy.name === 'EMA_RSI' || this.strategy.name === 'SCALPER_15M' || this.strategy.name === 'MACD_RSI',
-        is3M: this.strategy.name === 'SCALPER_3M',
+        is4H,
+        is15M: this.strategy.name === 'EMA_RSI' || this.strategy.name === 'SCALPER_15M' || this.strategy.name === 'MACD_RSI' || this.strategy.name === 'BOLLINGER_BANDS' || this.strategy.name === 'GRID',
+        is3M,
         isRunning: this.isRunning,
         cycleStartTime: this.cycleStartTime,
         lastSellTime: this.lastSellTime,
-        candleIntervalMinutes: this.strategy.name === 'SCALPER_3M' ? 3 : 15,
+        candleIntervalMinutes: is4H ? 240 : (is3M ? 3 : 15),
         candleDurationSeconds: cycleDurationSeconds,
         candleElapsedSeconds: cycleElapsedSeconds,
         candleRemainingSeconds: cycleRemainingSeconds,
