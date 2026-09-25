@@ -248,6 +248,44 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
     }
   };
 
+  const applyHighProfitPreset = async () => {
+    const highProfitConfig = {
+      strategy: 'TREND_4H',
+      tradeAmount: 2500,
+      leverage: 1,
+      maxLossPercent: 1.8,
+      profitLockLevels: '3,5,8,12,15',
+      profitLockStepAfterLast: 1.5,
+      lockBufferPercent: 0.3,
+      breakevenTriggerPercent: 2.0,
+      maxDailyLoss: 200,
+      cooldownSeconds: 120,
+    };
+    setSettings((prev) => ({ ...prev, ...highProfitConfig }));
+    setBacktestConfig((prev) => ({
+      ...prev,
+      strategyName: 'TREND_4H',
+      interval: '4h',
+      tradeAmount: 2500,
+      leverage: 1,
+      maxLossPercent: 1.8,
+      profitLockLevels: '3,5,8,12,15',
+      profitLockStepAfterLast: 1.5,
+      lockBufferPercent: 0.3,
+    }));
+    try {
+      setSaving(true);
+      await api.updateSettings(highProfitConfig);
+      setSaved(true);
+      if (onSettingsUpdated) onSettingsUpdated('TREND_4H');
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      alert(`Failed to apply high-profit preset: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleRunBacktest = async (e) => {
     e.preventDefault();
     setBacktestLoading(true);
@@ -341,6 +379,55 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
       {/* TAB 1: LIVE BOT SETTINGS */}
       {activeTab === 'settings' && (
         <form onSubmit={handleSave}>
+          {/* Quick High-Profit Preset Recommendation Banner */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.08) 100%)',
+              border: '1px solid rgba(16, 185, 129, 0.35)',
+              borderRadius: '12px',
+              padding: '14px 18px',
+              marginBottom: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.1rem' }}>🏆</span>
+                <span style={{ fontSize: '0.88rem', fontWeight: '800', color: '#86efac' }}>
+                  Recommended High-Profit Profile (Beats Indian 1% TDS & CoinDCX Fees)
+                </span>
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
+                Optimized for ₹4,660 Balance: ₹2,500 Trade Size • 1.8% Stop-Loss (Noise Immune) • +3% to +15% Profit Ladder • 4H Trend
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={applyHighProfitPreset}
+              style={{
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '8px 16px',
+                fontSize: '0.78rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 0 12px rgba(16,185,129,0.3)',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span>⚡ 1-Click Apply High-Profit Settings</span>
+            </button>
+          </div>
+
           {/* Strategy Selection Card */}
           <div
             style={{
