@@ -4,7 +4,7 @@ let socket = null;
 
 export function getSocket() {
   if (!socket) {
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? 'https://coindcx-trading-bot-r377.onrender.com' : '');
     const API_SECRET_KEY = import.meta.env.VITE_API_SECRET_KEY || 'dev-secret-key';
 
     socket = io(BACKEND_URL || '/', {
