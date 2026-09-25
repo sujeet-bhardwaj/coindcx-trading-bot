@@ -1747,7 +1747,11 @@ class TradingBot {
       }
     }
 
-    this.riskManager.updateLimits({ ...newSettings, leverage: this.leverage });
+    this.riskManager.updateLimits({
+      ...newSettings,
+      leverage: this.leverage,
+      maxTradeAmount: this.tradeAmount,
+    });
 
     // Save to Database
     if (getIsConnected()) {
