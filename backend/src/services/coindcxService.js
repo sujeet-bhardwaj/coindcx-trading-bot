@@ -122,6 +122,32 @@ class CoinDCXService {
           } catch (binanceErr) {
             // pass through to error handler
           }
+        } else if (normalizedPair && normalizedPair.endsWith('INR')) {
+          try {
+            const base = normalizedPair.replace(/INR$/, '');
+            const binanceSymbol = `${base}USDT`;
+            const binanceRes = await this.client.get(
+              `https://data-api.binance.vision/api/v3/ticker/24hr?symbol=${binanceSymbol}`
+            );
+            const b = binanceRes.data;
+            if (b && b.lastPrice) {
+              const usdtInrRate = 88.5;
+              const convertedPrice = (parseFloat(b.lastPrice) * usdtInrRate).toFixed(2);
+              return {
+                market: normalizedPair,
+                last_price: convertedPrice,
+                change_24_hour: b.priceChangePercent,
+                high: (parseFloat(b.highPrice) * usdtInrRate).toFixed(2),
+                low: (parseFloat(b.lowPrice) * usdtInrRate).toFixed(2),
+                volume: b.volume,
+                isFallback: true,
+                isSyntheticFallback: false,
+                source: 'binance_inr_mirror',
+              };
+            }
+          } catch (binanceErr) {
+            // pass through to error handler
+          }
         }
         // 4. Return mock synthetic fallback object (MUST be rejected by tradingBot)
         if (normalizedPair) {
