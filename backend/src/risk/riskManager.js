@@ -442,6 +442,7 @@ class RiskManager {
     return calculatePositionSize({
       riskPerTrade: this.riskPerTrade,
       maxAccountExposure: this.maxAccountExposure,
+      maxPositionSize: this.maxTradeAmount,
       ...params,
     });
   }

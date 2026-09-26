@@ -63,6 +63,14 @@ function calculatePositionSize({
   // 4. Raw quantity from risk formula
   let rawQuantity = maxAllowedRiskAmount / totalPerUnitRisk;
 
+  // If maxPositionSize is specified, cap raw quantity to ensure order value stays within maxPositionSize
+  if (maxPositionSize && maxPositionSize > 0 && maxPositionSize !== Infinity) {
+    const maxQtyByPositionSize = maxPositionSize / entry;
+    if (rawQuantity > maxQtyByPositionSize) {
+      rawQuantity = maxQtyByPositionSize;
+    }
+  }
+
   // 5. Apply exchange precision and lot sizing
   const precision = marketDetails?.target_currency_precision !== undefined
     ? Number(marketDetails.target_currency_precision)
@@ -72,6 +80,13 @@ function calculatePositionSize({
   // Round down to nearest discrete lot step to prevent risk over-allocation
   let quantity = Math.floor(rawQuantity / step) * step;
   quantity = parseFloat(quantity.toFixed(precision));
+
+  // Ensure discrete step rounding does not push orderValue over maxPositionSize
+  if (maxPositionSize && maxPositionSize > 0 && maxPositionSize !== Infinity) {
+    while (quantity * entry > maxPositionSize && quantity >= step) {
+      quantity = parseFloat((quantity - step).toFixed(precision));
+    }
+  }
 
   if (quantity <= 0) {
     return {

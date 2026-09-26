@@ -80,6 +80,7 @@ console.log(`✅ TEST 5 PASSED: Breakeven stop triggered correctly before taking
 
 // 4. Consecutive Trade Ready Check
 riskManager.tradingMode = 'PAPER_TRADING';
+riskManager.setBotEnabled(true);
 riskManager.resetLossCooldown();
 riskManager.resetTradeCooldown();
 const checkResult = riskManager.validateOrderPreCheck({
@@ -90,7 +91,7 @@ const checkResult = riskManager.validateOrderPreCheck({
   priceTimestamp: Date.now(),
   openPositionsCount: 0,
 });
-assert.strictEqual(checkResult.isValid, true, `validateOrderPreCheck must be valid, got: ${checkResult.reason}`);
+assert.strictEqual(checkResult.passed, true, `validateOrderPreCheck must be valid, got: ${checkResult.reason}`);
 console.log('✅ TEST 6 PASSED: Pre-check is valid for continuous instant trades.');
 
 console.log('\n🎉 ALL HIGH-PROFIT & CONSECUTIVE TRADE VERIFICATIONS PASSED SUCCESSFULLY!');

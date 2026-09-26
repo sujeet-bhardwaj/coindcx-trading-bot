@@ -1,5 +1,13 @@
+const dns = require('dns');
 const mongoose = require('mongoose');
 const config = require('./env');
+
+// Configure public DNS servers for reliable SRV resolution (fixes querySrv ECONNREFUSED on Windows)
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (dnsErr) {
+  // Ignore if custom dns setServers fails
+}
 
 let isConnected = false;
 

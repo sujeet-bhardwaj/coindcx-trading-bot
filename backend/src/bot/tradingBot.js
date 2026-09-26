@@ -960,6 +960,7 @@ class TradingBot {
       accountBalance: availableBalance,
       entryPrice: this.currentPrice,
       stopLossPrice: initialStopLossPrice,
+      maxPositionSize: this.tradeAmount || this.riskManager.maxTradeAmount,
       marketDetails,
     });
 
