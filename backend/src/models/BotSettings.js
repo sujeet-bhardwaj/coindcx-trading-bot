@@ -79,7 +79,12 @@ const botSettingsSchema = new mongoose.Schema(
     },
     strategy: {
       type: String,
-      default: 'TREND_PULLBACK_PRO',
+      default: 'BTC_ACCUMULATOR_PRO',
+    },
+    profitMode: {
+      type: String,
+      enum: ['BTC_ACCUMULATOR', 'INR'],
+      default: 'BTC_ACCUMULATOR',
     },
     feeDeductionPercent: {
       type: Number,

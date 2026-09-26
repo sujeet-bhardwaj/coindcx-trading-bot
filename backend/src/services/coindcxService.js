@@ -214,11 +214,12 @@ class CoinDCXService {
       }
       throw new Error(`Primary endpoint returned empty candle array for ${pair}`);
     } catch (error) {
-      // Robust fallback to Binance klines for USDT pairs if CoinDCX endpoint times out
+      // Robust fallback to Binance klines for USDT and INR pairs if CoinDCX endpoint times out
       const cleanPair = pair.replace(/^B-|^I-/, '').replace(/_/g, '');
+      const binanceInterval = interval || '1m';
+
       if (cleanPair.endsWith('USDT')) {
         try {
-          const binanceInterval = interval || '1m';
           const binanceUrl = `https://data-api.binance.vision/api/v3/klines?symbol=${cleanPair}&interval=${binanceInterval}&limit=${limit}`;
           const binanceRes = await this.client.get(binanceUrl);
           if (Array.isArray(binanceRes.data) && binanceRes.data.length > 0) {
@@ -228,6 +229,27 @@ class CoinDCXService {
               high: parseFloat(k[2]),
               low: parseFloat(k[3]),
               close: parseFloat(k[4]),
+              volume: parseFloat(k[5]),
+            }));
+          }
+        } catch (bErr) {
+          // ignore fallback error
+        }
+      } else if (cleanPair.endsWith('INR')) {
+        try {
+          const base = cleanPair.replace(/INR$/, '');
+          const binanceSymbol = `${base}USDT`;
+          const binanceUrl = `https://data-api.binance.vision/api/v3/klines?symbol=${binanceSymbol}&interval=${binanceInterval}&limit=${limit}`;
+          const binanceRes = await this.client.get(binanceUrl);
+          if (Array.isArray(binanceRes.data) && binanceRes.data.length > 0) {
+            // Live conversion using CoinDCX USD/INR parity (~88.5 INR/USDT)
+            const usdtInrRate = 88.5;
+            return binanceRes.data.map((k) => ({
+              time: k[0],
+              open: parseFloat((parseFloat(k[1]) * usdtInrRate).toFixed(2)),
+              high: parseFloat((parseFloat(k[2]) * usdtInrRate).toFixed(2)),
+              low: parseFloat((parseFloat(k[3]) * usdtInrRate).toFixed(2)),
+              close: parseFloat((parseFloat(k[4]) * usdtInrRate).toFixed(2)),
               volume: parseFloat(k[5]),
             }));
           }

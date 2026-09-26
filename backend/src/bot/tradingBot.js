@@ -266,6 +266,9 @@ class TradingBot {
           if (savedSettings.strategy) {
             this.setStrategy(savedSettings.strategy);
           }
+          if (savedSettings.profitMode) {
+            this.paperEngine.setProfitMode(savedSettings.profitMode);
+          }
           this.riskManager.updateLimits({
             leverage: this.leverage,
             maxTradeAmount: savedSettings.tradeAmount,
@@ -632,11 +635,21 @@ class TradingBot {
       const latestCompletedCandle = candles[candles.length - 1];
       const candleCheck = this.candleTracker.checkCandle(latestCompletedCandle, this.activePositions.length > 0);
 
-      // 4. Generate Trading Signal
+      // 4. Generate Trading Signal with active exit configuration
+      const exitConfig = {
+        maxLossPercent: this.riskManager.maxLossPercent,
+        profitLockLevels: this.riskManager.profitLockLevels,
+        profitLockStepAfterLast: this.riskManager.profitLockStepAfterLast,
+        lockBufferPercent: this.riskManager.lockBufferPercent,
+        breakevenTriggerPercent: this.riskManager.breakevenTriggerPercent,
+        feeAware: this.riskManager.feeAware,
+        feeDeductionPercent: this.riskManager.feeDeductionPercent,
+      };
       const signalResult = this.strategy.generateSignal({
         candles,
         currentPrice: this.currentPrice,
         position: this.activePositions.length > 0 ? this.activePositions[0] : null,
+        config: exitConfig,
       });
 
       // Rule #80: Indicator NaN Protection (EMA is NaN or RSI is NaN)
@@ -1718,6 +1731,9 @@ class TradingBot {
       lastSignal: this.lastSignal,
       indicators: this.lastIndicators,
       dailyRealizedPnL: this.paperEngine.getDailyPnL(),
+      totalBtcAccumulated: this.paperEngine.totalBtcAccumulated || 0,
+      dailyBtcPnL: this.currentPrice > 0 ? parseFloat((this.paperEngine.getDailyPnL() / this.currentPrice).toFixed(8)) : 0,
+      profitMode: this.paperEngine.profitMode || 'BTC_ACCUMULATOR',
       balances: config.tradingMode === 'LIVE_TRADING' ? this.liveBalances : paperBalances,
       isLive: config.tradingMode === 'LIVE_TRADING',
       riskLimits: riskSummary,
@@ -1792,6 +1808,12 @@ class TradingBot {
       }
     }
 
+    if (newSettings.profitMode) {
+      if (typeof this.paperEngine.setProfitMode === 'function') {
+        this.paperEngine.setProfitMode(newSettings.profitMode);
+      }
+    }
+
     this.riskManager.updateLimits({
       ...newSettings,
       leverage: this.leverage,
@@ -1817,6 +1839,7 @@ class TradingBot {
             cooldownSeconds: this.riskManager.cooldownSeconds,
             strategy: this.strategy.name,
             evalIntervalMs: this.evalIntervalMs,
+            profitMode: newSettings.profitMode || this.paperEngine.profitMode || 'BTC_ACCUMULATOR',
           },
           { upsert: true, new: true }
         );

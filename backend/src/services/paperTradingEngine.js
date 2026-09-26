@@ -24,6 +24,8 @@ class PaperTradingEngine {
     this.trades = []; // Completed trades
     this.orders = []; // All simulated orders
     this.dailyRealizedPnL = 0;
+    this.totalBtcAccumulated = options.totalBtcAccumulated || 0;
+    this.profitMode = options.profitMode || 'BTC_ACCUMULATOR';
     this.dailyLossResetDate = new Date().toDateString();
 
     this._syncBalances();
@@ -46,12 +48,15 @@ class PaperTradingEngine {
           if (savedAccount.dailyRealizedPnL !== undefined) {
             this.dailyRealizedPnL = savedAccount.dailyRealizedPnL;
           }
+          if (savedAccount.totalBtcAccumulated !== undefined) {
+            this.totalBtcAccumulated = savedAccount.totalBtcAccumulated;
+          }
           if (savedAccount.dailyLossResetDate) {
             this.dailyLossResetDate = savedAccount.dailyLossResetDate;
           }
           this._checkDailyReset();
           this._syncBalances();
-          console.log(`[PAPER] Restored state from DB: ${this.positions.length} position(s), Balance: $${this.balances.USDT?.toFixed(2)} USDT`);
+          console.log(`[PAPER] Restored state from DB: ${this.positions.length} position(s), Balance: ₹${this.balances.INR?.toFixed(2)} INR | ${this.balances.BTC?.toFixed(6)} BTC (Accumulated: ${this.totalBtcAccumulated.toFixed(8)} BTC)`);
         }
       }
     } catch (err) {
@@ -71,6 +76,7 @@ class PaperTradingEngine {
             balances: this.balances,
             positions: this.positions,
             dailyRealizedPnL: this.dailyRealizedPnL,
+            totalBtcAccumulated: this.totalBtcAccumulated,
             dailyLossResetDate: this.dailyLossResetDate,
           },
           { upsert: true, new: true }
@@ -382,6 +388,8 @@ class PaperTradingEngine {
     const netPnL = grossPnL - totalFees;
     const pnlPercent = margin > 0 ? (netPnL / margin) * 100 : (((executionPrice - entryPrice) / entryPrice) * 100 * lev * (isShort ? -1 : 1));
 
+    let btcProfitEarned = 0;
+
     // Update balances
     if (isShort) {
       // Short position return: margin + net realized PnL
@@ -390,12 +398,27 @@ class PaperTradingEngine {
     } else {
       this.balances[base] = Math.max(0, (this.balances[base] || 0) - sellQty);
       if (lev > 1) {
-        // Leveraged return: pledged margin + net realized PnL
-        const returnedCapital = Math.max(0, margin + netPnL);
-        this.balances[quote] = (this.balances[quote] || 0) + returnedCapital;
+        if (this.profitMode === 'BTC_ACCUMULATOR' && netPnL > 0 && base === 'BTC') {
+          // 🪙 BTC ACCUMULATOR: Return margin to INR cash wallet, credit pure profit directly in BTC!
+          btcProfitEarned = parseFloat((netPnL / executionPrice).toFixed(8));
+          this.balances[base] = parseFloat(((this.balances[base] || 0) + btcProfitEarned).toFixed(8));
+          this.balances[quote] = (this.balances[quote] || 0) + margin;
+          this.totalBtcAccumulated = parseFloat(((this.totalBtcAccumulated || 0) + btcProfitEarned).toFixed(8));
+        } else {
+          // Leveraged return: pledged margin + net realized PnL
+          const returnedCapital = Math.max(0, margin + netPnL);
+          this.balances[quote] = (this.balances[quote] || 0) + returnedCapital;
+        }
       } else {
-        // 1x Spot return: net proceeds from sale
-        this.balances[quote] = (this.balances[quote] || 0) + netQuote;
+        if (this.profitMode === 'BTC_ACCUMULATOR' && netPnL > 0 && base === 'BTC') {
+          btcProfitEarned = parseFloat((netPnL / executionPrice).toFixed(8));
+          this.balances[base] = parseFloat(((this.balances[base] || 0) + btcProfitEarned).toFixed(8));
+          this.balances[quote] = (this.balances[quote] || 0) + margin;
+          this.totalBtcAccumulated = parseFloat(((this.totalBtcAccumulated || 0) + btcProfitEarned).toFixed(8));
+        } else {
+          // 1x Spot return: net proceeds from sale
+          this.balances[quote] = (this.balances[quote] || 0) + netQuote;
+        }
       }
     }
     this._syncBalances();
@@ -435,6 +458,7 @@ class PaperTradingEngine {
       liquidationPrice: position ? position.liquidationPrice : null,
       grossPnL,
       profit: netPnL,
+      btcProfit: btcProfitEarned,
       pnlPercent,
       fee: totalFees,
       reason,
@@ -501,6 +525,13 @@ class PaperTradingEngine {
   getDailyPnL() {
     this._checkDailyReset();
     return this.dailyRealizedPnL;
+  }
+
+  setProfitMode(mode) {
+    if (mode === 'BTC_ACCUMULATOR' || mode === 'INR') {
+      this.profitMode = mode;
+      console.log(`[PAPER] Profit Mode updated to: ${mode}`);
+    }
   }
 
   async reset() {

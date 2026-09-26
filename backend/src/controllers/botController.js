@@ -98,6 +98,12 @@ function validateSettingsPayload(payload) {
     }
   }
 
+  if (payload.profitMode !== undefined) {
+    if (payload.profitMode !== 'BTC_ACCUMULATOR' && payload.profitMode !== 'INR') {
+      return "profitMode must be either 'BTC_ACCUMULATOR' or 'INR'.";
+    }
+  }
+
   if (payload.pair !== undefined) {
     if (typeof payload.pair !== 'string' || !/^[A-Za-z0-9_\/-]{3,15}$/.test(payload.pair)) {
       return 'Trading pair contains invalid characters.';
@@ -168,6 +174,8 @@ async function getSettings(req, res, next) {
         leverage: status.leverage || 1,
         mode: status.mode,
         strategy: status.strategy,
+        profitMode: status.profitMode || 'BTC_ACCUMULATOR',
+        totalBtcAccumulated: status.totalBtcAccumulated || 0,
         evalIntervalMs: status.evalIntervalMs || 10000,
         ...status.riskLimits,
       },

@@ -4,6 +4,16 @@ import api from '../services/api';
 
 const STRATEGY_DEFINITIONS = [
   {
+    id: 'BTC_ACCUMULATOR_PRO',
+    name: '🪙 BTC Accumulator Pro (HODL Booster & Satoshis Generator)',
+    badge: '👑 Max BTC Profit',
+    timeframe: '15m',
+    timeframeLabel: '15 Minutes (Active Satoshis Growth)',
+    cycleSeconds: 900,
+    accentColor: '#f59e0b',
+    desc: 'Designed specifically to generate and accumulate profit in Bitcoin (Satoshis): Buys institutional value-pocket pullbacks (20/50 EMA) & Lower Bollinger Band dips, and secures net profit directly in BTC!',
+  },
+  {
     id: 'TREND_PULLBACK_PRO',
     name: '👑 Institutional Trend Pullback Pro (200 EMA + ADX + TDS Shield)',
     badge: 'Institutional Edge',
@@ -258,40 +268,43 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
     }
   };
 
-  const applyHighProfitPreset = async () => {
+  const applyHighProfitPreset = async (presetType = 'BTC_ACCUMULATOR') => {
+    const isBtcAccumulator = presetType === 'BTC_ACCUMULATOR';
     const highProfitConfig = {
-      strategy: 'TREND_PULLBACK_PRO',
+      strategy: isBtcAccumulator ? 'BTC_ACCUMULATOR_PRO' : 'TREND_PULLBACK_PRO',
       tradeAmount: 2500,
-      leverage: 1,
+      leverage: 5,
+      profitMode: isBtcAccumulator ? 'BTC_ACCUMULATOR' : 'INR',
       maxLossPercent: 1.5,
-      profitLockLevels: '3.5,5.5,8,12,15',
-      profitLockStepAfterLast: 1.5,
-      lockBufferPercent: 0.4,
-      breakevenTriggerPercent: 2.5,
+      profitLockLevels: isBtcAccumulator ? '0.5,1.0,1.8,3.0,5.0' : '0.6,1.2,2.0,3.5,5.0',
+      profitLockStepAfterLast: 1.0,
+      lockBufferPercent: 0.15,
+      breakevenTriggerPercent: 0.4,
       maxDailyLoss: 250,
-      cooldownSeconds: 60,
+      cooldownSeconds: 15,
+      evalIntervalMs: 5000,
     };
     setSettings((prev) => ({ ...prev, ...highProfitConfig }));
     setBacktestConfig((prev) => ({
       ...prev,
-      strategyName: 'TREND_PULLBACK_PRO',
+      strategyName: highProfitConfig.strategy,
       interval: '15m',
       tradeAmount: 2500,
-      leverage: 1,
+      leverage: 5,
       maxLossPercent: 1.5,
-      profitLockLevels: '3.5,5.5,8,12,15',
-      profitLockStepAfterLast: 1.5,
-      lockBufferPercent: 0.4,
-      breakevenTriggerPercent: 2.5,
+      profitLockLevels: highProfitConfig.profitLockLevels,
+      profitLockStepAfterLast: 1.0,
+      lockBufferPercent: 0.15,
+      breakevenTriggerPercent: 0.4,
     }));
     try {
       setSaving(true);
       await api.updateSettings(highProfitConfig);
       setSaved(true);
-      if (onSettingsUpdated) onSettingsUpdated('TREND_PULLBACK_PRO');
+      if (onSettingsUpdated) onSettingsUpdated(highProfitConfig.strategy);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      alert(`Failed to apply high-profit preset: ${err.response?.data?.error || err.message}`);
+      alert(`Failed to apply profit preset: ${err.response?.data?.error || err.message}`);
     } finally {
       setSaving(false);
     }
@@ -407,36 +420,59 @@ export default function StrategySettings({ botStatus, onSettingsUpdated }) {
           >
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '1.1rem' }}>🏆</span>
-                <span style={{ fontSize: '0.88rem', fontWeight: '800', color: '#86efac' }}>
-                  Recommended High-Profit Profile (Beats Indian 1% TDS & CoinDCX Fees)
+                <span style={{ fontSize: '1.2rem' }}>🪙</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: '800', color: '#fde047' }}>
+                  BTC Accumulator & High-Yield Profit Presets (Profit in BTC Satoshis)
                 </span>
               </div>
-              <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
-                Optimized for ₹4,660 Balance: ₹2,500 Trade Size • 1.8% Stop-Loss (Noise Immune) • +3% to +15% Profit Ladder • 4H Trend
+              <p style={{ margin: '4px 0 0', fontSize: '0.76rem', color: 'var(--text-dim)', lineHeight: 1.4 }}>
+                Instant profit locking: 5x Leverage • ₹2,500 Trade Size • Tight 0.5%–5% Trailing Profit Ladder • 15s Fast Cooldown
               </p>
             </div>
-            <button
-              type="button"
-              onClick={applyHighProfitPreset}
-              style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '8px 16px',
-                fontSize: '0.78rem',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 0 12px rgba(16,185,129,0.3)',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              <span>⚡ 1-Click Apply High-Profit Settings</span>
-            </button>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => applyHighProfitPreset('BTC_ACCUMULATOR')}
+                style={{
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  fontSize: '0.78rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 0 12px rgba(245,158,11,0.4)',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <span>🪙 1-Click BTC Accumulator (HODL)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyHighProfitPreset('SCALPER')}
+                style={{
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '8px 14px',
+                  fontSize: '0.78rem',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 0 12px rgba(16,185,129,0.3)',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <span>⚡ 1-Click Scalp (INR)</span>
+              </button>
+            </div>
           </div>
 
           {/* Strategy Selection Card */}

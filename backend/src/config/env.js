@@ -45,17 +45,18 @@ const config = {
 
   // Mode & Risk Limits
   tradingMode: validatedTradingMode,
-  defaultLeverage: parseInt(process.env.DEFAULT_LEVERAGE, 10) || 1,
+  profitMode: process.env.PROFIT_MODE || 'BTC_ACCUMULATOR',
+  defaultLeverage: parseInt(process.env.DEFAULT_LEVERAGE, 10) || 5,
   maxTradeAmount: parseFloat(process.env.MAX_TRADE_AMOUNT) || 2500,
   riskPerTrade: parseFloat(process.env.RISK_PER_TRADE) || 0.005, // 0.5% maximum capital risk
   maxAccountExposure: parseFloat(process.env.MAX_ACCOUNT_EXPOSURE) || 1.0, // Max 100% of balance per position
   // Unified Exit Engine Settings (Optimized for TDS & Fees)
-  maxLossPercent: parseFloat(process.env.MAX_LOSS_PERCENT) || 1.8,
-  profitLockLevels: process.env.PROFIT_LOCK_LEVELS || '3,5,8,12,15',
-  profitLockStepAfterLast: parseFloat(process.env.PROFIT_LOCK_STEP_AFTER_LAST) || 1.5,
-  lockBufferPercent: parseFloat(process.env.LOCK_BUFFER_PERCENT) || 0.3,
-  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 2.5,
-  feeDeductionPercent: parseFloat(process.env.FEE_DEDUCTION_PERCENT) || 1.5,
+  maxLossPercent: parseFloat(process.env.MAX_LOSS_PERCENT) || 1.5,
+  profitLockLevels: process.env.PROFIT_LOCK_LEVELS || '0.5,1.0,1.8,3.0,5.0',
+  profitLockStepAfterLast: parseFloat(process.env.PROFIT_LOCK_STEP_AFTER_LAST) || 1.0,
+  lockBufferPercent: parseFloat(process.env.LOCK_BUFFER_PERCENT) || 0.15,
+  breakevenTriggerPercent: parseFloat(process.env.BREAKEVEN_TRIGGER_PERCENT) || 0.4,
+  feeDeductionPercent: parseFloat(process.env.FEE_DEDUCTION_PERCENT) || 0.2,
   feeAware: process.env.FEE_AWARE !== undefined ? process.env.FEE_AWARE === 'true' : true,
 
   // Legacy mappings for backward compatibility
@@ -64,13 +65,13 @@ const config = {
   get trailingActivationPercent() { return 0.5; },
   get trailingGivebackPercent() { return this.lockBufferPercent; },
 
-  cooldownSeconds: parseInt(process.env.COOLDOWN_SECONDS, 10) || 120,
+  cooldownSeconds: parseInt(process.env.COOLDOWN_SECONDS, 10) || 15,
   lossCooldownMinutes: parseInt(process.env.LOSS_COOLDOWN_MINUTES, 10) || 0,
   maxOpenPositions: parseInt(process.env.MAX_OPEN_POSITIONS, 10) || 1,
   evalIntervalMs: parseInt(process.env.EVAL_INTERVAL_MS, 10) || 10000,
 
   // Strategy defaults
-  defaultStrategy: process.env.DEFAULT_STRATEGY || 'TREND_PULLBACK_PRO',
+  defaultStrategy: process.env.DEFAULT_STRATEGY || 'BTC_ACCUMULATOR_PRO',
   defaultPair: process.env.DEFAULT_PAIR || 'BTCINR',
   fastEmaPeriod: parseInt(process.env.FAST_EMA_PERIOD, 10) || 20,
   slowEmaPeriod: parseInt(process.env.SLOW_EMA_PERIOD, 10) || 50,

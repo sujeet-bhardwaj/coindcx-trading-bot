@@ -679,38 +679,53 @@ export default function MetricsCards({
         </div>
       </div>
 
-      {/* 3. TODAY'S REALIZED P&L + 5-MIN P&L */}
-      <div className="glass-panel" style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', fontWeight: '600', textTransform: 'uppercase' }}>
-            Today's Realized P&L
+      {/* 3. TODAY'S REALIZED P&L + BTC ACCUMULATION */}
+      <div className="glass-panel" style={{ padding: '20px', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(245, 158, 11, 0.06) 100%)', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <span style={{ fontSize: '0.78rem', color: '#fde047', fontWeight: '700', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>🪙 Realized Profit (INR & BTC)</span>
           </span>
-          <DollarSign size={16} style={{ color: isPnLPositive ? 'var(--accent-green)' : 'var(--accent-red)' }} />
+          <span style={{ fontSize: '0.7rem', background: 'rgba(245, 158, 11, 0.2)', color: '#fde047', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>
+            BTC Accumulator
+          </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
           <span
             className="font-mono"
             style={{
-              fontSize: '1.75rem',
+              fontSize: '1.6rem',
               fontWeight: '800',
-              color: isPnLPositive ? 'var(--accent-green)' : 'var(--accent-red)',
+              color: isPnLPositive ? '#34d399' : '#f87171',
             }}
           >
-            {isPnLPositive ? '+' : '-'}${Math.abs(dailyPnL).toFixed(2)}
+            {isPnLPositive ? '+' : '-'}{currencySymbol}{Math.abs(dailyPnL).toFixed(2)}
+          </span>
+          {price > 0 && (
+            <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#facc15', fontFamily: 'var(--font-mono)' }}>
+              ({isPnLPositive ? '+' : '-'}{(Math.abs(dailyPnL) / price).toFixed(8)} BTC)
+            </span>
+          )}
+        </div>
+
+        {/* BTC Satoshis Accumulated Metric */}
+        <div style={{ fontSize: '0.78rem', color: '#cbd5e1', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--text-muted)' }}>Accumulated Satoshis:</span>
+          <span style={{ fontWeight: '800', color: '#facc15', fontFamily: 'var(--font-mono)' }}>
+            ⚡ {price > 0 ? Math.round((Math.abs(dailyPnL) / price) * 100000000).toLocaleString() : 0} Sats
           </span>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <span style={{ color: 'var(--accent-cyan)', fontWeight: '600' }}>5-Min P&L:</span>
           <span
             className="font-mono"
             style={{
               fontWeight: '700',
-              color: (pnl5m || 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+              color: (pnl5m || 0) >= 0 ? '#34d399' : '#f87171',
             }}
           >
-            {(pnl5m || 0) >= 0 ? '+' : '-'}${Math.abs(pnl5m || 0).toFixed(2)} ({recent5mTradeCount} trades)
+            {(pnl5m || 0) >= 0 ? '+' : '-'}{currencySymbol}{Math.abs(pnl5m || 0).toFixed(2)} ({recent5mTradeCount} trades)
           </span>
         </div>
       </div>
@@ -729,20 +744,20 @@ export default function MetricsCards({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Primary Entry:</span>
               <span className="font-mono" style={{ fontWeight: '700', color: '#fff' }}>
-                ${activePosition.entryPrice?.toFixed(2)}
+                {currencySymbol}{activePosition.entryPrice?.toLocaleString(undefined, { minimumFractionDigits: isINR ? 0 : 2, maximumFractionDigits: 2 })}
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Leverage / Margin:</span>
               <span className="font-mono" style={{ fontSize: '0.85rem', fontWeight: '700', color: '#f59e0b' }}>
-                {activePosition.leverage || botStatus?.leverage || 1}x (${Number(activePosition.margin || ((activePosition.quantity * activePosition.entryPrice) / (activePosition.leverage || 1))).toFixed(2)})
+                {activePosition.leverage || botStatus?.leverage || 1}x ({currencySymbol}{Number(activePosition.margin || ((activePosition.quantity * activePosition.entryPrice) / (activePosition.leverage || 1))).toFixed(2)})
               </span>
             </div>
             {activePosition.liquidationPrice && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
                 <span style={{ fontSize: '0.85rem', color: '#f87171' }}>Est. Liquidation:</span>
                 <span className="font-mono" style={{ fontSize: '0.85rem', fontWeight: '800', color: '#f87171' }}>
-                  ${Number(activePosition.liquidationPrice).toFixed(2)}
+                  {currencySymbol}{Number(activePosition.liquidationPrice).toLocaleString(undefined, { minimumFractionDigits: isINR ? 0 : 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             )}
@@ -752,11 +767,10 @@ export default function MetricsCards({
                 className="font-mono"
                 style={{
                   fontWeight: '700',
-                  color: liveUnrealizedPnL >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+                  color: liveUnrealizedPnL >= 0 ? '#34d399' : '#f87171',
                 }}
               >
-                {liveUnrealizedPnL >= 0 ? '+' : ''}
-                ${liveUnrealizedPnL.toFixed(2)} ({liveUnrealizedPnLPercent.toFixed(2)}%)
+                {liveUnrealizedPnL >= 0 ? '+' : '-'}{currencySymbol}{Math.abs(liveUnrealizedPnL).toFixed(2)} ({liveUnrealizedPnLPercent.toFixed(2)}%)
               </span>
             </div>
 

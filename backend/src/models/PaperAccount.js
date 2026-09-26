@@ -36,6 +36,7 @@ const paperAccountSchema = new mongoose.Schema(
     },
     positions: [paperPositionSchema],
     dailyRealizedPnL: { type: Number, default: 0 },
+    totalBtcAccumulated: { type: Number, default: 0 },
     dailyLossResetDate: { type: String, default: () => new Date().toDateString() },
   },
   { timestamps: true }

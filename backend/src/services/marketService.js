@@ -10,8 +10,10 @@ class MarketService {
     // In-memory ticker cache to avoid downloading full exchange ticker array repeatedly
     this.tickersCache = null;
     this.lastTickerCacheTime = 0;
-    this.tickerCacheTTL = 3000; // 3 seconds cache
-    this.lastPairPriceCache = new Map(); // Last known price per pair for fallback
+    this.tickerCacheTTL = 2500; // 2.5 seconds cache for full list
+    this.pairTickerCache = new Map(); // normalizedPair -> { ticker, timestamp }
+    this.pairCacheTTL = 1500; // 1.5 seconds cache for individual pair
+    this.lastPairPriceCache = new Map(); // Last known real price per pair for fallback
   }
 
   /**
@@ -47,7 +49,15 @@ class MarketService {
     const normalized = pair ? this.normalizePair(pair) : null;
     const now = Date.now();
 
-    // Check ticker cache if fresh
+    // 1. Check single pair cache if fresh (within 1.5s)
+    if (normalized && this.pairTickerCache.has(normalized)) {
+      const cached = this.pairTickerCache.get(normalized);
+      if (now - cached.timestamp < this.pairCacheTTL && !cached.ticker?.isSyntheticFallback) {
+        return cached.ticker;
+      }
+    }
+
+    // 2. Check full ticker array cache if fresh
     if (this.tickersCache && now - this.lastTickerCacheTime < this.tickerCacheTTL) {
       if (normalized) {
         const found = this.tickersCache.find((t) => t.market === normalized);
@@ -60,21 +70,37 @@ class MarketService {
     try {
       const result = await this.coindcx.getTicker(normalized);
       if (normalized && result && result.last_price) {
-        this.lastPairPriceCache.set(normalized, result);
+        // If legitimate price, cache as real price
+        if (!result.isSyntheticFallback && !result.isFakePrice && result.last_price !== '85000.00') {
+          this.pairTickerCache.set(normalized, { ticker: result, timestamp: now });
+          this.lastPairPriceCache.set(normalized, { ticker: result, timestamp: now });
+          return result;
+        } else {
+          // If synthetic fallback, fallback to recent known real price if available (< 60s)
+          if (this.lastPairPriceCache.has(normalized)) {
+            const lastReal = this.lastPairPriceCache.get(normalized);
+            if (now - lastReal.timestamp < 60000) {
+              return lastReal.ticker;
+            }
+          }
+        }
         return result;
       } else if (Array.isArray(result)) {
         this.tickersCache = result;
         this.lastTickerCacheTime = now;
         for (const t of result) {
-          if (t.market) this.lastPairPriceCache.set(t.market, t);
+          if (t.market && !t.isSyntheticFallback && !t.isFakePrice) {
+            this.lastPairPriceCache.set(t.market, { ticker: t, timestamp: now });
+            this.pairTickerCache.set(t.market, { ticker: t, timestamp: now });
+          }
         }
         return result;
       }
       return result;
     } catch (err) {
-      // If network timed out, use last known ticker from cache
+      // If network timed out, use last known real ticker from cache
       if (normalized && this.lastPairPriceCache.has(normalized)) {
-        return this.lastPairPriceCache.get(normalized);
+        return this.lastPairPriceCache.get(normalized).ticker;
       }
       throw err;
     }

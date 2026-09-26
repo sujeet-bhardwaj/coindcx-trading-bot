@@ -1128,11 +1128,143 @@ class TrendPullbackProStrategy extends BaseStrategy {
 }
 
 /**
+ * BTC Accumulator Pro: Institutional Dip-Buyer & Satoshis Generator
+ * Combines 20/50/200 EMA + Bollinger Bands Mean-Reversion + RSI Momentum Bounce
+ */
+class BtcAccumulatorProStrategy extends BaseStrategy {
+  constructor(options = {}) {
+    super('BTC_ACCUMULATOR_PRO', options);
+    this.description = 'Institutional BTC Accumulator: 200 EMA Trend Filter + 20/50 EMA Pullback + Bollinger Lower Dip Reversal for Maximum BTC Growth.';
+    this.fastPeriod = options.fastPeriod || 20;
+    this.slowPeriod = options.slowPeriod || 50;
+    this.macroPeriod = options.macroPeriod || 200;
+    this.rsiPeriod = options.rsiPeriod || 14;
+    this.adxPeriod = options.adxPeriod || 14;
+    this.bbPeriod = options.bbPeriod || 20;
+    this.bbStdDev = options.bbStdDev || 2;
+  }
+
+  generateSignal({ candles, currentPrice = 0, position = null, config = {} } = {}) {
+    if (!candles || candles.length < this.slowPeriod + 5) {
+      return {
+        signal: 'HOLD',
+        reason: `Insufficient candles for BTC Accumulator Pro (needs at least ${this.slowPeriod + 5})`,
+      };
+    }
+
+    const closes = candles.map((c) => parseFloat(c.close));
+    const len = closes.length;
+    const effectivePrice = currentPrice > 0 ? currentPrice : closes[len - 1];
+
+    const fastEma = calculateEMA(closes, this.fastPeriod);
+    const slowEma = calculateEMA(closes, this.slowPeriod);
+    const macroEma = calculateEMA(closes, Math.min(this.macroPeriod, len - 2));
+    const rsiValues = calculateRSI(closes, this.rsiPeriod);
+    const adxResult = calculateADX(candles, this.adxPeriod);
+    const bb = calculateBollingerBands(closes, this.bbPeriod, this.bbStdDev);
+
+    const currentFast = fastEma[len - 1];
+    const prevFast = fastEma[len - 2];
+    const currentSlow = slowEma[len - 1];
+    const prevSlow = slowEma[len - 2];
+    const currentMacro = macroEma && macroEma.length > 0 ? macroEma[macroEma.length - 1] : null;
+    const currentRsi = rsiValues[len - 1];
+    const prevRsi = rsiValues[len - 2];
+    const currentAdx = adxResult.adx ? (adxResult.adx[len - 1] || 20) : 20;
+    const currentLowerBB = bb.lower ? bb.lower[len - 1] : null;
+    const currentUpperBB = bb.upper ? bb.upper[len - 1] : null;
+    const currentMiddleBB = bb.middle ? bb.middle[len - 1] : null;
+
+    const indicators = {
+      price: effectivePrice,
+      fastEma: parseFloat(currentFast?.toFixed(2)),
+      slowEma: parseFloat(currentSlow?.toFixed(2)),
+      macroEma: currentMacro ? parseFloat(currentMacro?.toFixed(2)) : null,
+      rsi: parseFloat(currentRsi?.toFixed(1)),
+      adx: parseFloat(currentAdx?.toFixed(1)),
+      bbLower: currentLowerBB ? parseFloat(currentLowerBB?.toFixed(2)) : null,
+      bbUpper: currentUpperBB ? parseFloat(currentUpperBB?.toFixed(2)) : null,
+      strategyType: 'BTC_ACCUMULATOR_PRO',
+    };
+
+    // 1. Position Exit Evaluation
+    if (position && position.entryPrice > 0) {
+      const exitResult = evaluateExit(position, effectivePrice, config);
+      return {
+        signal: exitResult.action === 'SELL' ? 'SELL' : 'HOLD',
+        reason: exitResult.reason,
+        indicators,
+        exitState: exitResult.state,
+      };
+    }
+
+    // 2. Trend & Quality Filters
+    const isMacroBullish = currentMacro !== null ? effectivePrice >= currentMacro * 0.992 : true;
+    const isEmaAligned = currentFast !== null && currentSlow !== null && currentFast >= currentSlow * 0.998;
+
+    // 3. High Probability Dip & Bounce Triggers
+    // Trigger A: Bollinger Band Lower Tag with RSI Recovery
+    const distToLowerBB = currentLowerBB ? (effectivePrice - currentLowerBB) / currentLowerBB : 1;
+    const isBollingerDip = distToLowerBB <= 0.008 && currentRsi <= 48 && currentRsi >= prevRsi;
+
+    // Trigger B: Value-Pocket Pullback (Between 20 & 50 EMA)
+    const isInValuePocket = (effectivePrice >= currentSlow * 0.995 && effectivePrice <= currentFast * 1.015);
+    const isRsiTurningUp = currentRsi >= 38 && currentRsi <= 64 && currentRsi >= prevRsi;
+    const isPocketBounce = isInValuePocket && isRsiTurningUp;
+
+    // Trigger C: Golden Crossover or Trend Resumption
+    const isGoldenCross = prevFast <= prevSlow && currentFast > currentSlow;
+
+    // Trigger D: Deep Oversold Discount (RSI <= 34)
+    const isDeepOversold = currentRsi <= 34 && currentRsi >= prevRsi;
+
+    if (isBollingerDip && isMacroBullish) {
+      return {
+        signal: 'BUY',
+        reason: `BTC_ACCUMULATOR [Bollinger Dip Reversal]: Price tagged Lower BB ($${currentLowerBB.toFixed(0)}) with RSI (${currentRsi.toFixed(1)}) recovering. Prime dip buy.`,
+        indicators,
+      };
+    }
+
+    if (isPocketBounce && (isMacroBullish || isEmaAligned)) {
+      return {
+        signal: 'BUY',
+        reason: `BTC_ACCUMULATOR [Value-Pocket Bounce]: Price in 20-50 EMA support pocket with RSI (${currentRsi.toFixed(1)}) bouncing upward.`,
+        indicators,
+      };
+    }
+
+    if (isGoldenCross) {
+      return {
+        signal: 'BUY',
+        reason: `BTC_ACCUMULATOR [Golden Crossover]: 20 EMA crossed above 50 EMA ($${currentFast.toFixed(0)} > $${currentSlow.toFixed(0)}) with strong momentum.`,
+        indicators,
+      };
+    }
+
+    if (isDeepOversold && isMacroBullish) {
+      return {
+        signal: 'BUY',
+        reason: `BTC_ACCUMULATOR [Deep Discount Reversal]: Extreme oversold RSI (${currentRsi.toFixed(1)} <= 34) in macro trend. Instant accumulation entry.`,
+        indicators,
+      };
+    }
+
+    return {
+      signal: 'HOLD',
+      reason: `BTC Accumulator Pro: Monitoring for next high-probability dip or pullback (RSI: ${currentRsi.toFixed(1)}, ADX: ${currentAdx.toFixed(1)}, Price: $${effectivePrice.toFixed(0)})`,
+      indicators,
+    };
+  }
+}
+
+/**
  * Strategy Registry to easily replace or load strategies
  */
 class StrategyRegistry {
   constructor() {
     this.strategies = new Map();
+    this.register(new BtcAccumulatorProStrategy());
     this.register(new TrendPullbackProStrategy());
     this.register(new EMARSIStrategy());
     this.register(new BollingerBandsStrategy());
@@ -1147,8 +1279,8 @@ class StrategyRegistry {
     this.strategies.set(strategyInstance.name, strategyInstance);
   }
 
-  get(name = 'TREND_PULLBACK_PRO') {
-    return this.strategies.get(name) || this.strategies.get('TREND_PULLBACK_PRO') || this.strategies.get('EMA_RSI');
+  get(name = 'BTC_ACCUMULATOR_PRO') {
+    return this.strategies.get(name) || this.strategies.get('BTC_ACCUMULATOR_PRO') || this.strategies.get('TREND_PULLBACK_PRO') || this.strategies.get('EMA_RSI');
   }
 
   list() {
@@ -1182,6 +1314,7 @@ module.exports = {
   Scalper15MStrategy,
   Trend4HStrategy,
   TrendPullbackProStrategy,
+  BtcAccumulatorProStrategy,
   strategyRegistry,
 };
 
